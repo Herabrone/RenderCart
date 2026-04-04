@@ -1,0 +1,127 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME}
+    depends_on:
+      - redis
+    volumes:
+      - hf_cache:/cache/huggingface
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  worker-main-1:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME}
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - hf_cache:/cache/huggingface
+    restart: unless-stopped
+
+  worker-main-2:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME}
+      - NVIDIA_VISIBLE_DEVICES=1
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - hf_cache:/cache/huggingface
+    restart: unless-stopped
+
+  worker-light:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME}
+      - NVIDIA_VISIBLE_DEVICES=2,3,4
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 3
+              capabilities: [gpu]
+    volumes:
+      - hf_cache:/cache/huggingface
+    restart: unless-stopped
+
+  worker-preprocess:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME}
+      - NVIDIA_VISIBLE_DEVICES=5
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - hf_cache:/cache/huggingface
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  hf_cache:

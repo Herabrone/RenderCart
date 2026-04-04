@@ -1,0 +1,10 @@
+{
+  "business_1": {
+    "name": "Acme Corp",
+    "api_key_hash": "sha256:your_hashed_api_key_here"
+  },
+  "business_2": {
+    "name": "Globex Inc",
+    "api_key_hash": "sha256:your_hashed_api_key_here"
+  }
+}
