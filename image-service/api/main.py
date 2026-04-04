@@ -6,6 +6,7 @@ import os
 import time
 import random
 from dotenv import load_dotenv
+import redis
 
 from models import GenerateRequest, JobResponse, JobStatus, RedisJobStore
 from auth import APIKeyAuth
@@ -29,6 +30,14 @@ redis_store = RedisJobStore()
 storage = R2Storage()
 api_auth = APIKeyAuth()
 
+# Redis connection for rate limiting
+rate_limit_redis = redis.Redis(
+    host=os.getenv('REDIS_HOST', 'redis'),
+    port=int(os.getenv('REDIS_PORT', '6379')),
+    password=os.getenv('REDIS_PASSWORD', ''),
+    decode_responses=True
+)
+
 # Celery configuration
 celery = Celery(
     "tasks",
@@ -40,13 +49,47 @@ celery = Celery(
 def root():
     return {"status": "running"}
 
-@app.post("/generate")
+@app.get("/rate_limit/{business_id}")
+def get_rate_limit_status(business_id: str):
+    """Get current rate limit status for a business"""
+    key = f"rate_limit:{business_id}"
+    current = rate_limit_redis.get(key)
+    return {
+        "business_id": business_id,
+        "current_requests": int(current) if current else 0,
+        "limit": 10,
+        "reset_time": "1 minute"
+    }
+
+async def check_rate_limit(business_id: str):
+    """Check and update rate limit for business"""
+    key = f"rate_limit:{business_id}"
+    pipeline = rate_limit_redis.pipeline()
+    
+    # Increment request count
+    pipeline.incr(key)
+    # Set expiration to 1 minute
+    pipeline.expire(key, 60)
+    
+    # Get current count
+    current = rate_limit_redis.get(key)
+    
+    if int(current) if current else 0 > 10:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded. Maximum 10 requests per minute."
+        )
+
+@app.post("/generate", status_code=status.HTTP_202_ACCEPTED)
 async def generate_image(
     request: GenerateRequest,
     business_id: str = Depends(api_auth.verify_api_key_dependency)
 ) -> dict:
     """Generate images from input image and prompt"""
     try:
+        # Check rate limit
+        await check_rate_limit(business_id)
+        
         # Create job record
         job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
         redis_store.create_job(job_id, business_id, request)
@@ -58,6 +101,8 @@ async def generate_image(
         )
         
         return {"job_id": job_id}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -73,10 +118,10 @@ async def get_job_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     
     # Verify business ownership
-    if job.job_id.startswith(f"job_{business_id}_"):
-        return job
-    else:
+    if not job.job_id.startswith(f"job_{business_id}_"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    
+    return job
 
 @app.get("/health")
 async def health_check() -> dict:
