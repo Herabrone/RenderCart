@@ -2,263 +2,393 @@
 """
 GPU Hardware Detection Script
 Detects available NVIDIA GPUs and generates Docker Compose overlay for workers.
+
+Classifies GPUs by memory/model to assign roles:
+- 3060-class: preprocess/light queue
+- 3080-class: light generation queue
+- 3090/4090-class: main SDXL queue
+- Unknown cards: safe fallback to light queue with conservative settings
 """
 
 import subprocess
 import json
 import sys
-from typing import List, Dict, Any
+import re
+from typing import List, Dict, Any, Optional
 
 
-def get_gpu_info() -> List[Dict[str, Any]]:
-    """Detect available NVIDIA GPUs using nvidia-smi."""
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=index,name,memory.total,compute_capability",
-             "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        
-        gpus = []
-        for line in result.stdout.strip().split('\n'):
-            if not line.strip():
-                continue
-            parts = [p.strip() for p in line.split(',')]
-            if len(parts) >= 4:
-                gpus.append({
-                    'index': int(parts[0]),
-                    'name': parts[1],
-                    'memory': parts[2],
-                    'compute_cap': parts[3]
-                })
-        
-        return sorted(gpus, key=lambda x: x['index'])
-    except subprocess.CalledProcessError as e:
-        print(f"Error running nvidia-smi: {e}", file=sys.stderr)
-        print("Make sure NVIDIA drivers are installed and nvidia-smi is available.", file=sys.stderr)
+class GPUSpec:
+    """Represents GPU specifications and capabilities."""
+    
+    def __init__(self, name: str, memory_mb: int, compute_cap: str):
+        self.name = name
+        self.memory_mb = memory_mb
+        self.compute_cap = compute_cap
+        self.role = "unknown"
+        self.settings = {}
+    
+    def __str__(self) -> str:
+        return f"{self.name} ({self.memory_mb}MB, CC {self.compute_cap}, role: {self.role})"
+
+
+class GPUPlanner:
+    """Manages GPU discovery and worker planning."""
+    
+    def __init__(self):
+        self.gpus: List[GPUSpec] = []
+        self.plan: Dict[str, Any] = {}
+    
+    def detect_gpus(self) -> None:
+        """Detect available NVIDIA GPUs using nvidia-smi."""
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=index,name,memory.total,compute_capability",
+                 "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            self.gpus = []
+            for line in result.stdout.strip().split('\n'):
+                if not line.strip():
+                    continue
+                parts = [p.strip() for p in line.split(',')]
+                if len(parts) >= 4:
+                    # Parse memory from "MiB" format
+                    memory_match = re.search(r'(\d+)', parts[2])
+                    memory_mb = int(memory_match.group(1)) if memory_match else 0
+                    
+                    gpu = GPUSpec(
+                        name=parts[1],
+                        memory_mb=memory_mb,
+                        compute_cap=parts[3]
+                    )
+                    self.gpus.append(gpu)
+            
+            self.gpus = sorted(self.gpus, key=lambda x: self.gpus.index(x))
+            
+        except subprocess.CalledProcessError as e:
+            self._fail_fast(f"Error running nvidia-smi: {e}", 
+                          "Make sure NVIDIA drivers are installed and nvidia-smi is available.")
+        except FileNotFoundError:
+            self._fail_fast("nvidia-smi not found", 
+                          "Make sure NVIDIA drivers are installed.")
+    
+    def _fail_fast(self, error: str, hint: str) -> None:
+        """Fail fast with clear diagnostics."""
+        print(f"\n❌ ERROR: {error}", file=sys.stderr)
+        print(f"💡 HINT: {hint}", file=sys.stderr)
+        print("\n🚫 No usable GPU detected. Exiting.", file=sys.stderr)
         sys.exit(1)
-    except FileNotFoundError:
-        print("nvidia-smi not found. Make sure NVIDIA drivers are installed.", file=sys.stderr)
-        sys.exit(1)
-
-
-def categorize_gpus(gpus: List[Dict[str, Any]]) -> Dict[str, List[int]]:
-    """
-    Categorize GPUs based on their capabilities.
-    Returns a dictionary with categories as keys and lists of GPU indices as values.
-    """
-    categories = {
-        'main': [],      # High-end GPUs (e.g., RTX 3060, 3070, 3080, 3090, 40xx)
-        'light': [],     # Lower-end or multiple GPUs
-        'preprocess': [] # Dedicated for preprocessing tasks
-    }
     
-    for gpu in gpus:
-        gpu_name = gpu['name'].lower()
+    def classify_gpus(self) -> None:
+        """
+        Classify GPUs based on their capabilities.
         
-        # High-end GPUs (main category)
-        if any(keyword in gpu_name for keyword in ['3060', '3070', '3080', '3090', '4060', '4070', '4080', '4090', 'a100', 'a5000']):
-            categories['main'].append(gpu['index'])
-        # Lower-end GPUs (light category)
-        elif any(keyword in gpu_name for keyword in ['1660', '2060', '2070', '2080', '3050', '4050']):
-            categories['light'].append(gpu['index'])
-        # All other GPUs go to preprocess
-        else:
-            categories['preprocess'].append(gpu['index'])
-    
-    return categories
-
-
-def generate_worker_services(categories: Dict[str, List[int]]) -> Dict[str, Any]:
-    """Generate Docker Compose services for workers based on GPU categories."""
-    services = {}
-    
-    # Create main workers (1 GPU each)
-    for i, gpu_idx in enumerate(categories['main'], 1):
-        service_name = f"worker-main-{i}"
-        services[service_name] = {
-            'build': {
-                'context': '.',
-                'dockerfile': 'worker/Dockerfile'
-            },
-            'environment': {
-                'REDIS_HOST': 'redis',
-                'REDIS_PORT': '6379',
-                'R2_ENDPOINT': '${R2_ENDPOINT}',
-                'R2_ACCESS_KEY_ID': '${R2_ACCESS_KEY_ID}',
-                'R2_SECRET_ACCESS_KEY': '${R2_SECRET_ACCESS_KEY}',
-                'R2_BUCKET_NAME': '${R2_BUCKET_NAME}',
-                'NVIDIA_VISIBLE_DEVICES': str(gpu_idx),
-                'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
-            },
-            'deploy': {
-                'resources': {
-                    'reservations': {
-                        'devices': [
-                            {
-                                'driver': 'nvidia',
-                                'count': 1,
-                                'capabilities': ['gpu']
-                            }
-                        ]
-                    }
+        Classification hierarchy:
+        1. 3090/4090-class: main SDXL queue (high VRAM, high performance)
+        2. 3080-class: light generation queue (medium VRAM, good performance)
+        3. 3060-class: preprocess/light queue (lower VRAM, basic tasks)
+        4. Unknown: safe fallback to light queue with conservative settings
+        """
+        if not self.gpus:
+            self._fail_fast("No GPUs detected", 
+                          "Check that GPUs are properly installed and drivers are working.")
+        
+        for gpu in self.gpus:
+            gpu_name = gpu.name.lower()
+            
+            # 3090/4090-class: main SDXL queue
+            if any(keyword in gpu_name for keyword in ['3090', '4090']):
+                gpu.role = "main"
+                gpu.settings = {
+                    'max_resolution': '2048x2048',
+                    'max_batch_size': 4,
+                    'priority': 1
                 }
-            },
-            'volumes': [
-                'hf_cache:/cache/huggingface'
-            ],
-            'restart': 'unless-stopped'
-        }
-    
-    # Create light worker (multiple GPUs)
-    if categories['light']:
-        services['worker-light'] = {
-            'build': {
-                'context': '.',
-                'dockerfile': 'worker/Dockerfile'
-            },
-            'environment': {
-                'REDIS_HOST': 'redis',
-                'REDIS_PORT': '6379',
-                'R2_ENDPOINT': '${R2_ENDPOINT}',
-                'R2_ACCESS_KEY_ID': '${R2_ACCESS_KEY_ID}',
-                'R2_SECRET_ACCESS_KEY': '${R2_SECRET_ACCESS_KEY}',
-                'R2_BUCKET_NAME': '${R2_BUCKET_NAME}',
-                'NVIDIA_VISIBLE_DEVICES': ','.join(str(idx) for idx in categories['light']),
-                'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
-            },
-            'deploy': {
-                'resources': {
-                    'reservations': {
-                        'devices': [
-                            {
-                                'driver': 'nvidia',
-                                'count': len(categories['light']),
-                                'capabilities': ['gpu']
-                            }
-                        ]
-                    }
+            # 3080-class: light generation queue
+            elif any(keyword in gpu_name for keyword in ['3080', '4080']):
+                gpu.role = "light"
+                gpu.settings = {
+                    'max_resolution': '1536x1536',
+                    'max_batch_size': 2,
+                    'priority': 2
                 }
-            },
-            'volumes': [
-                'hf_cache:/cache/huggingface'
-            ],
-            'restart': 'unless-stopped'
-        }
-    
-    # Create preprocess worker (1 GPU)
-    if categories['preprocess']:
-        services['worker-preprocess'] = {
-            'build': {
-                'context': '.',
-                'dockerfile': 'worker/Dockerfile'
-            },
-            'environment': {
-                'REDIS_HOST': 'redis',
-                'REDIS_PORT': '6379',
-                'R2_ENDPOINT': '${R2_ENDPOINT}',
-                'R2_ACCESS_KEY_ID': '${R2_ACCESS_KEY_ID}',
-                'R2_SECRET_ACCESS_KEY': '${R2_SECRET_ACCESS_KEY}',
-                'R2_BUCKET_NAME': '${R2_BUCKET_NAME}',
-                'NVIDIA_VISIBLE_DEVICES': str(categories['preprocess'][0]),
-                'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
-            },
-            'deploy': {
-                'resources': {
-                    'reservations': {
-                        'devices': [
-                            {
-                                'driver': 'nvidia',
-                                'count': 1,
-                                'capabilities': ['gpu']
-                            }
-                        ]
-                    }
+            # 3060-class: preprocess/light queue
+            elif any(keyword in gpu_name for keyword in ['3060', '4060']):
+                gpu.role = "preprocess"
+                gpu.settings = {
+                    'max_resolution': '1024x1024',
+                    'max_batch_size': 1,
+                    'priority': 3
                 }
+            # Safe fallback for unknown cards
+            else:
+                print(f"\n⚠️  WARNING: Unknown GPU detected: {gpu.name}", file=sys.stderr)
+                print(f"   Falling back to 'light' role with conservative settings.", file=sys.stderr)
+                gpu.role = "light"
+                gpu.settings = {
+                    'max_resolution': '1024x1024',
+                    'max_batch_size': 1,
+                    'priority': 4
+                }
+    
+    def generate_plan(self) -> Dict[str, Any]:
+        """Generate worker plan based on GPU classification."""
+        self.plan = {
+            'gpus': [],
+            'workers': {
+                'main': [],
+                'light': [],
+                'preprocess': []
             },
-            'volumes': [
-                'hf_cache:/cache/huggingface'
-            ],
-            'restart': 'unless-stopped'
+            'summary': {}
         }
+        
+        for gpu in self.gpus:
+            gpu_info = {
+                'name': gpu.name,
+                'memory': f"{gpu.memory_mb}MB",
+                'compute_cap': gpu.compute_cap,
+                'role': gpu.role,
+                'settings': gpu.settings
+            }
+            self.plan['gpus'].append(gpu_info)
+            self.plan['workers'][gpu.role].append(gpu_info)
+        
+        # Generate summary statistics
+        self.plan['summary'] = {
+            'total_gpus': len(self.gpus),
+            'main_workers': len(self.plan['workers']['main']),
+            'light_workers': len(self.plan['workers']['light']),
+            'preprocess_workers': len(self.plan['workers']['preprocess'])
+        }
+        
+        return self.plan
     
-    return services
-
-
-def generate_compose_overlay(services: Dict[str, Any]) -> str:
-    """Generate Docker Compose YAML for worker services."""
-    yaml_lines = []
+    def print_diagnostics(self) -> None:
+        """Print detailed GPU diagnostics."""
+        print("\n🔍 GPU Discovery Results:", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        
+        for gpu in self.gpus:
+            print(f"\n📊 GPU: {gpu.name}", file=sys.stderr)
+            print(f"   Memory: {gpu.memory_mb}MB", file=sys.stderr)
+            print(f"   Compute Capability: {gpu.compute_cap}", file=sys.stderr)
+            print(f"   Role: {gpu.role}", file=sys.stderr)
+            print(f"   Settings: {json.dumps(gpu.settings, indent=6)}", file=sys.stderr)
+        
+        print("\n" + "=" * 60, file=sys.stderr)
+        print("📋 Worker Plan Summary:", file=sys.stderr)
+        print(f"   Main SDXL Workers: {len(self.plan['workers']['main'])}", file=sys.stderr)
+        print(f"   Light Generation Workers: {len(self.plan['workers']['light'])}", file=sys.stderr)
+        print(f"   Preprocess Workers: {len(self.plan['workers']['preprocess'])}", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
     
-    yaml_lines.append('services:')
+    def generate_worker_services(self) -> Dict[str, Any]:
+        """Generate Docker Compose services for workers based on GPU roles."""
+        services = {}
+        
+        # Create main workers (1 GPU each)
+        for i, gpu_info in enumerate(self.plan['workers']['main'], 1):
+            service_name = f"worker-main-{i}"
+            services[service_name] = {
+                'build': {
+                    'context': '.',
+                    'dockerfile': 'worker/Dockerfile'
+                },
+                'environment': {
+                    'REDIS_HOST': 'redis',
+                    'REDIS_PORT': '6379',
+                    'R2_ENDPOINT': '${R2_ENDPOINT}',
+                    'R2_ACCESS_KEY_ID': '${R2_ACCESS_KEY_ID}',
+                    'R2_SECRET_ACCESS_KEY': '${R2_SECRET_ACCESS_KEY}',
+                    'R2_BUCKET_NAME': '${R2_BUCKET_NAME}',
+                    'WORKER_ROLE': 'main',
+                    'MAX_RESOLUTION': gpu_info['settings']['max_resolution'],
+                    'MAX_BATCH_SIZE': str(gpu_info['settings']['max_batch_size']),
+                    'NVIDIA_VISIBLE_DEVICES': str(self.gpus.index(next(g for g in self.gpus if g.role == 'main' and g.name == gpu_info['name']))),
+                    'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
+                },
+                'deploy': {
+                    'resources': {
+                        'reservations': {
+                            'devices': [
+                                {
+                                    'driver': 'nvidia',
+                                    'count': 1,
+                                    'capabilities': ['gpu']
+                                }
+                            ]
+                        }
+                    }
+                },
+                'volumes': [
+                    'hf_cache:/cache/huggingface'
+                ],
+                'restart': 'unless-stopped'
+            }
+        
+        # Create light workers (1 GPU each)
+        for i, gpu_info in enumerate(self.plan['workers']['light'], 1):
+            service_name = f"worker-light-{i}"
+            services[service_name] = {
+                'build': {
+                    'context': '.',
+                    'dockerfile': 'worker/Dockerfile'
+                },
+                'environment': {
+                    'REDIS_HOST': 'redis',
+                    'REDIS_PORT': '6379',
+                    'R2_ENDPOINT': '${R2_ENDPOINT}',
+                    'R2_ACCESS_KEY_ID': '${R2_ACCESS_KEY_ID}',
+                    'R2_SECRET_ACCESS_KEY': '${R2_SECRET_ACCESS_KEY}',
+                    'R2_BUCKET_NAME': '${R2_BUCKET_NAME}',
+                    'WORKER_ROLE': 'light',
+                    'MAX_RESOLUTION': gpu_info['settings']['max_resolution'],
+                    'MAX_BATCH_SIZE': str(gpu_info['settings']['max_batch_size']),
+                    'NVIDIA_VISIBLE_DEVICES': str(self.gpus.index(next(g for g in self.gpus if g.role == 'light' and g.name == gpu_info['name']))),
+                    'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
+                },
+                'deploy': {
+                    'resources': {
+                        'reservations': {
+                            'devices': [
+                                {
+                                    'driver': 'nvidia',
+                                    'count': 1,
+                                    'capabilities': ['gpu']
+                                }
+                            ]
+                        }
+                    }
+                },
+                'volumes': [
+                    'hf_cache:/cache/huggingface'
+                ],
+                'restart': 'unless-stopped'
+            }
+        
+        # Create preprocess workers (1 GPU each)
+        for i, gpu_info in enumerate(self.plan['workers']['preprocess'], 1):
+            service_name = f"worker-preprocess-{i}"
+            services[service_name] = {
+                'build': {
+                    'context': '.',
+                    'dockerfile': 'worker/Dockerfile'
+                },
+                'environment': {
+                    'REDIS_HOST': 'redis',
+                    'REDIS_PORT': '6379',
+                    'R2_ENDPOINT': '${R2_ENDPOINT}',
+                    'R2_ACCESS_KEY_ID': '${R2_ACCESS_KEY_ID}',
+                    'R2_SECRET_ACCESS_KEY': '${R2_SECRET_ACCESS_KEY}',
+                    'R2_BUCKET_NAME': '${R2_BUCKET_NAME}',
+                    'WORKER_ROLE': 'preprocess',
+                    'MAX_RESOLUTION': gpu_info['settings']['max_resolution'],
+                    'MAX_BATCH_SIZE': str(gpu_info['settings']['max_batch_size']),
+                    'NVIDIA_VISIBLE_DEVICES': str(self.gpus.index(next(g for g in self.gpus if g.role == 'preprocess' and g.name == gpu_info['name']))),
+                    'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
+                },
+                'deploy': {
+                    'resources': {
+                        'reservations': {
+                            'devices': [
+                                {
+                                    'driver': 'nvidia',
+                                    'count': 1,
+                                    'capabilities': ['gpu']
+                                }
+                            ]
+                        }
+                    }
+                },
+                'volumes': [
+                    'hf_cache:/cache/huggingface'
+                ],
+                'restart': 'unless-stopped'
+            }
+        
+        return services
     
-    for service_name, service_config in services.items():
-        yaml_lines.append(f'  {service_name}:')
+    def generate_compose_overlay(self, services: Dict[str, Any]) -> str:
+        """Generate Docker Compose YAML for worker services."""
+        yaml_lines = []
         
-        # Build
-        if 'build' in service_config:
-            yaml_lines.append('    build:')
-            yaml_lines.append(f'      context: {service_config["build"]["context"]}')
-            yaml_lines.append(f'      dockerfile: {service_config["build"]["dockerfile"]}')
+        yaml_lines.append('services:')
         
-        # Environment
-        if 'environment' in service_config:
-            yaml_lines.append('    environment:')
-            for key, value in service_config['environment'].items():
-                yaml_lines.append(f'      - {key}={value}')
+        for service_name, service_config in services.items():
+            yaml_lines.append(f'  {service_name}:')
+            
+            # Build
+            if 'build' in service_config:
+                yaml_lines.append('    build:')
+                yaml_lines.append(f'      context: {service_config["build"]["context"]}')
+                yaml_lines.append(f'      dockerfile: {service_config["build"]["dockerfile"]}')
+            
+            # Environment
+            if 'environment' in service_config:
+                yaml_lines.append('    environment:')
+                for key, value in service_config['environment'].items():
+                    yaml_lines.append(f'      - {key}={value}')
+            
+            # Deploy
+            if 'deploy' in service_config:
+                yaml_lines.append('    deploy:')
+                if 'resources' in service_config['deploy']:
+                    yaml_lines.append('      resources:')
+                    if 'reservations' in service_config['deploy']['resources']:
+                        yaml_lines.append('        reservations:')
+                        if 'devices' in service_config['deploy']['resources']['reservations']:
+                            yaml_lines.append('          devices:')
+                            for device in service_config['deploy']['resources']['reservations']['devices']:
+                                yaml_lines.append('            - driver: nvidia')
+                                yaml_lines.append(f'              count: {device["count"]}')
+                                yaml_lines.append(f'              capabilities: {json.dumps(device["capabilities"])}')
+            
+            # Volumes
+            if 'volumes' in service_config:
+                yaml_lines.append('    volumes:')
+                for volume in service_config['volumes']:
+                    yaml_lines.append(f'      - {volume}')
+            
+            # Restart
+            if 'restart' in service_config:
+                yaml_lines.append(f'    restart: {service_config["restart"]}')
         
-        # Deploy
-        if 'deploy' in service_config:
-            yaml_lines.append('    deploy:')
-            if 'resources' in service_config['deploy']:
-                yaml_lines.append('      resources:')
-                if 'reservations' in service_config['deploy']['resources']:
-                    yaml_lines.append('        reservations:')
-                    if 'devices' in service_config['deploy']['resources']['reservations']:
-                        yaml_lines.append('          devices:')
-                        for device in service_config['deploy']['resources']['reservations']['devices']:
-                            yaml_lines.append('            - driver: nvidia')
-                            yaml_lines.append(f'              count: {device["count"]}')
-                            yaml_lines.append(f'              capabilities: {json.dumps(device["capabilities"])}')
-        
-        # Volumes
-        if 'volumes' in service_config:
-            yaml_lines.append('    volumes:')
-            for volume in service_config['volumes']:
-                yaml_lines.append(f'      - {volume}')
-        
-        # Restart
-        if 'restart' in service_config:
-            yaml_lines.append(f'    restart: {service_config["restart"]}')
-    
-    return '\n'.join(yaml_lines)
+        return '\n'.join(yaml_lines)
 
 
 def main():
     """Main entry point."""
-    print("Detecting GPU hardware...", file=sys.stderr)
+    planner = GPUPlanner()
     
-    gpus = get_gpu_info()
-    print(f"Found {len(gpus)} GPU(s)", file=sys.stderr)
+    print("🔍 Detecting GPU hardware...", file=sys.stderr)
+    planner.detect_gpus()
     
-    for gpu in gpus:
-        print(f"  GPU {gpu['index']}: {gpu['name']} ({gpu['memory']}, CC {gpu['compute_cap']})", file=sys.stderr)
-    
-    if not gpus:
-        print("No GPUs detected. Exiting.", file=sys.stderr)
+    if not planner.gpus:
+        print("❌ No GPUs detected. Exiting.", file=sys.stderr)
         sys.exit(0)
     
-    categories = categorize_gpus(gpus)
-    print("\nGPU Categories:", file=sys.stderr)
-    for category, indices in categories.items():
-        print(f"  {category}: {indices}", file=sys.stderr)
+    print(f"✅ Found {len(planner.gpus)} GPU(s)", file=sys.stderr)
     
-    services = generate_worker_services(categories)
+    print("\n📊 GPU Information:", file=sys.stderr)
+    for gpu in planner.gpus:
+        print(f"  GPU: {gpu.name} ({gpu.memory_mb}MB, CC {gpu.compute_cap})", file=sys.stderr)
     
-    print(f"\nGenerating Docker Compose overlay with {len(services)} worker service(s)...", file=sys.stderr)
+    print("\n🏷️ Classifying GPUs...", file=sys.stderr)
+    planner.classify_gpus()
     
-    compose_content = generate_compose_overlay(services)
+    print("\n📋 Generating worker plan...", file=sys.stderr)
+    plan = planner.generate_plan()
+    planner.print_diagnostics()
+    
+    services = planner.generate_worker_services()
+    
+    print(f"\n✅ Generating Docker Compose overlay with {len(services)} worker service(s)...", file=sys.stderr)
+    
+    compose_content = planner.generate_compose_overlay(services)
     print(compose_content)
 
 
