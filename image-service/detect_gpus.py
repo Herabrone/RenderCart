@@ -189,9 +189,11 @@ class GPUPlanner:
     def generate_worker_services(self) -> Dict[str, Any]:
         """Generate Docker Compose services for workers based on GPU roles."""
         services = {}
-        
+
         # Create main workers (1 GPU each)
-        for i, gpu_info in enumerate(self.plan['workers']['main'], 1):
+        for i, gpu in enumerate(self.gpus, 1):
+            if gpu.role != 'main':
+                continue
             service_name = f"worker-main-{i}"
             services[service_name] = {
                 'build': {
@@ -206,9 +208,9 @@ class GPUPlanner:
                     'R2_SECRET_ACCESS_KEY': '${R2_SECRET_ACCESS_KEY}',
                     'R2_BUCKET_NAME': '${R2_BUCKET_NAME}',
                     'WORKER_ROLE': 'main',
-                    'MAX_RESOLUTION': gpu_info['settings']['max_resolution'],
-                    'MAX_BATCH_SIZE': str(gpu_info['settings']['max_batch_size']),
-                    'NVIDIA_VISIBLE_DEVICES': str(self.gpus.index(next(g for g in self.gpus if g.role == 'main' and g.name == gpu_info['name']))),
+                    'MAX_RESOLUTION': gpu.settings['max_resolution'],
+                    'MAX_BATCH_SIZE': str(gpu.settings['max_batch_size']),
+                    'NVIDIA_VISIBLE_DEVICES': str(i - 1),
                     'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
                 },
                 'deploy': {
@@ -229,9 +231,11 @@ class GPUPlanner:
                 ],
                 'restart': 'unless-stopped'
             }
-        
+
         # Create light workers (1 GPU each)
-        for i, gpu_info in enumerate(self.plan['workers']['light'], 1):
+        for i, gpu in enumerate(self.gpus, 1):
+            if gpu.role != 'light':
+                continue
             service_name = f"worker-light-{i}"
             services[service_name] = {
                 'build': {
@@ -246,9 +250,9 @@ class GPUPlanner:
                     'R2_SECRET_ACCESS_KEY': '${R2_SECRET_ACCESS_KEY}',
                     'R2_BUCKET_NAME': '${R2_BUCKET_NAME}',
                     'WORKER_ROLE': 'light',
-                    'MAX_RESOLUTION': gpu_info['settings']['max_resolution'],
-                    'MAX_BATCH_SIZE': str(gpu_info['settings']['max_batch_size']),
-                    'NVIDIA_VISIBLE_DEVICES': str(self.gpus.index(next(g for g in self.gpus if g.role == 'light' and g.name == gpu_info['name']))),
+                    'MAX_RESOLUTION': gpu.settings['max_resolution'],
+                    'MAX_BATCH_SIZE': str(gpu.settings['max_batch_size']),
+                    'NVIDIA_VISIBLE_DEVICES': str(i - 1),
                     'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
                 },
                 'deploy': {
@@ -269,9 +273,11 @@ class GPUPlanner:
                 ],
                 'restart': 'unless-stopped'
             }
-        
+
         # Create preprocess workers (1 GPU each)
-        for i, gpu_info in enumerate(self.plan['workers']['preprocess'], 1):
+        for i, gpu in enumerate(self.gpus, 1):
+            if gpu.role != 'preprocess':
+                continue
             service_name = f"worker-preprocess-{i}"
             services[service_name] = {
                 'build': {
@@ -286,9 +292,9 @@ class GPUPlanner:
                     'R2_SECRET_ACCESS_KEY': '${R2_SECRET_ACCESS_KEY}',
                     'R2_BUCKET_NAME': '${R2_BUCKET_NAME}',
                     'WORKER_ROLE': 'preprocess',
-                    'MAX_RESOLUTION': gpu_info['settings']['max_resolution'],
-                    'MAX_BATCH_SIZE': str(gpu_info['settings']['max_batch_size']),
-                    'NVIDIA_VISIBLE_DEVICES': str(self.gpus.index(next(g for g in self.gpus if g.role == 'preprocess' and g.name == gpu_info['name']))),
+                    'MAX_RESOLUTION': gpu.settings['max_resolution'],
+                    'MAX_BATCH_SIZE': str(gpu.settings['max_batch_size']),
+                    'NVIDIA_VISIBLE_DEVICES': str(i - 1),
                     'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
                 },
                 'deploy': {
@@ -309,7 +315,7 @@ class GPUPlanner:
                 ],
                 'restart': 'unless-stopped'
             }
-        
+
         return services
     
     def generate_compose_overlay(self, services: Dict[str, Any]) -> str:
