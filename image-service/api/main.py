@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from celery import Celery
 from celery.result import AsyncResult
@@ -11,6 +11,7 @@ import redis
 from models import GenerateRequest, JobResponse, JobStatus, RedisJobStore
 from auth import APIKeyAuth
 from storage import R2Storage
+from usage import UsageTracker
 
 load_dotenv()
 
@@ -29,6 +30,7 @@ app.add_middleware(
 redis_store = RedisJobStore()
 storage = R2Storage()
 api_auth = APIKeyAuth()
+usage_tracker = UsageTracker()
 
 # Redis connection for rate limiting
 rate_limit_redis = redis.Redis(
@@ -133,3 +135,40 @@ async def health_check() -> dict:
             "r2": "configured"
         }
     }
+
+
+@app.get("/usage")
+async def get_usage(business_id: str, days: int = 7):
+    """Get API usage statistics for a business"""
+    try:
+        stats = usage_tracker.get_usage_stats(business_id, days)
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/upload")
+async def upload_image(
+    file: UploadFile = File(...),
+    business_id: str = Depends(api_auth.verify_api_key_dependency)
+) -> dict:
+    """Upload an image to R2 storage"""
+    try:
+        # Check rate limit
+        await check_rate_limit(business_id)
+        
+        # Read file content
+        contents = await file.read()
+        
+        # Generate unique filename
+        timestamp = int(time.time())
+        filename = f"{business_id}_{timestamp}_{file.filename}"
+        
+        # Upload to R2
+        url = storage.upload_file(contents, filename)
+        
+        return {"url": url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
