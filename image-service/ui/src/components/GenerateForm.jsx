@@ -25,21 +25,11 @@ const GenerateForm = ({ imageUrl, onJobCreated }) => {
     setError(null);
     
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      if (!apiKey) {
-        setError('Please enter your API key in the header');
-        return;
-      }
-
       const response = await axios.post('/api/generate', {
         image_url: imageUrl,
         prompt: prompt,
         style: style,
         num_outputs: numOutputs
-      }, {
-        headers: {
-          'X-API-Key': apiKey
-        }
       });
 
       onJobCreated(response.data.job_id);

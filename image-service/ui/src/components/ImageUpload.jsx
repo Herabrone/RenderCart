@@ -62,19 +62,12 @@ const ImageUpload = ({ onImageUpload }) => {
     setError(null);
     
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      if (!apiKey) {
-        setError('Please enter your API key in the header');
-        return;
-      }
-
       const formData = new FormData();
       formData.append('file', file);
       
       const response = await axios.post('/api/upload', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
-          'X-API-Key': apiKey
+          'Content-Type': 'multipart/form-data'
         }
       });
 

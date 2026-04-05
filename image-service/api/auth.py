@@ -47,6 +47,10 @@ class APIKeyAuth:
         Raises:
             HTTPException: If API key is invalid
         """
+        # Bypass for local development if NO_AUTH is set
+        if os.getenv('NO_AUTH') == 'true':
+            return 'local_dev'
+
         if not api_key:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
