@@ -43,7 +43,7 @@ class GPUPlanner:
         """Detect available NVIDIA GPUs using nvidia-smi."""
         try:
             result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=index,name,memory.total",
+                ["nvidia-smi", "--query-gpu=index,name,memory.total,compute_cap",
                  "--format=csv,noheader"],
                 capture_output=True,
                 text=True,

@@ -12,7 +12,12 @@ const JobStatus = ({ jobId, onImagesGenerated }) => {
     
     const fetchStatus = async () => {
       try {
-        const response = await axios.get(`/api/job/${jobId}`);
+        const apiKey = localStorage.getItem('apiKey');
+        const response = await axios.get(`/api/job/${jobId}`, {
+          headers: {
+            ...(apiKey && { 'X-API-Key': apiKey })
+          }
+        });
 
         setStatus(response.data.status);
         setProgress(response.data.progress || 0);

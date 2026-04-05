@@ -10,7 +10,7 @@ STYLE_PRESETS = {
     "realistic": {
         "prompt_template": "{user_prompt}, professional photography, natural lighting, realistic colors, high quality, 8K, sharp focus",
         "inference_kwargs": {
-            "steps": 30,
+            "num_inference_steps": 30,
             "guidance_scale": 7.5,
             "strength": 0.7
         }
@@ -18,7 +18,7 @@ STYLE_PRESETS = {
     "cartoon": {
         "prompt_template": "{user_prompt}, cartoon style, 2D illustration, vibrant colors, clean lines, high quality",
         "inference_kwargs": {
-            "steps": 25,
+            "num_inference_steps": 25,
             "guidance_scale": 8.0,
             "strength": 0.65
         }
@@ -26,7 +26,7 @@ STYLE_PRESETS = {
     "anime": {
         "prompt_template": "{user_prompt}, anime style, digital art, stylized, high resolution, Japanese animation style",
         "inference_kwargs": {
-            "steps": 25,
+            "num_inference_steps": 25,
             "guidance_scale": 7.5,
             "strength": 0.7
         }
@@ -34,7 +34,7 @@ STYLE_PRESETS = {
     "watercolor": {
         "prompt_template": "{user_prompt}, watercolor painting, artistic, soft edges, hand-painted texture, high quality",
         "inference_kwargs": {
-            "steps": 30,
+            "num_inference_steps": 30,
             "guidance_scale": 7.0,
             "strength": 0.75
         }
@@ -42,7 +42,7 @@ STYLE_PRESETS = {
     "sketch": {
         "prompt_template": "{user_prompt}, pencil sketch, hand-drawn, black and white, detailed lines, graphite texture",
         "inference_kwargs": {
-            "steps": 25,
+            "num_inference_steps": 25,
             "guidance_scale": 8.5,
             "strength": 0.8
         }
@@ -50,7 +50,7 @@ STYLE_PRESETS = {
     "lifestyle": {
         "prompt_template": "{user_prompt}, professional lifestyle photography, natural lighting, realistic colors, outdoor setting, high quality, 8K",
         "inference_kwargs": {
-            "steps": 30,
+            "num_inference_steps": 30,
             "guidance_scale": 7.5,
             "strength": 0.7
         }
@@ -58,7 +58,7 @@ STYLE_PRESETS = {
     "studio": {
         "prompt_template": "{user_prompt}, professional studio photography, clean background, sharp focus, high resolution, product shot, 8K",
         "inference_kwargs": {
-            "steps": 25,
+            "num_inference_steps": 25,
             "guidance_scale": 8.0,
             "strength": 0.6
         }
@@ -66,7 +66,7 @@ STYLE_PRESETS = {
     "ad": {
         "prompt_template": "{user_prompt}, advertising campaign, vibrant colors, eye-catching composition, high contrast, professional grade, billboard ready, 8K",
         "inference_kwargs": {
-            "steps": 35,
+            "num_inference_steps": 35,
             "guidance_scale": 9.0,
             "strength": 0.8
         }

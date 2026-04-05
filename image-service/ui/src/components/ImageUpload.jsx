@@ -47,9 +47,11 @@ const ImageUpload = ({ onImageUpload }) => {
       const formData = new FormData();
       formData.append('file', file);
       
+      const apiKey = localStorage.getItem('apiKey');
       const response = await axios.post('/api/upload', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'multipart/form-data',
+          ...(apiKey && { 'X-API-Key': apiKey })
         }
       });
 

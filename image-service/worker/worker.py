@@ -2,6 +2,7 @@
 
 import os
 import time
+import random
 import tempfile
 import traceback
 import logging
@@ -274,7 +275,7 @@ def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, nu
         pipeline = get_sdxl_pipeline()
         
         # Generate images
-        generator = torch.Generator(device="cuda").manual_seed(42)
+        generator = torch.Generator(device="cuda").manual_seed(random.randint(0, 2**32 - 1))
         images = pipeline(
             prompt=prompt,
             image=img,

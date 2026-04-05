@@ -57,12 +57,9 @@ async def v1_generate(
     )
     
     # Store in redis
-    # Using existing redis_store from main.py context
-    from models import RedisJobStore
-    RedisJobStore().create_job(job_id, business_id, request)
+    redis_store.create_job(job_id, business_id, request)
     
     # Send to celery
-    # Using existing celery from main.py context
     celery.send_task(
         "worker.process_job",
         args=[job_id, request.image_url, request.prompt, request.style.value, business_id, request.num_outputs],
@@ -72,7 +69,7 @@ async def v1_generate(
         }
     )
     
-    created_job = RedisJobStore().get_job(job_id)
+    created_job = redis_store.get_job(job_id)
     if created_job is None:
         raise HTTPException(status_code=500, detail="Failed to create job record")
     return created_job
@@ -83,8 +80,7 @@ async def v1_get_job(
     business_id: str = Depends(APIKeyAuth().verify_api_key)
 ) -> JobResponse:
     """Get status of a specific generation job."""
-    from models import RedisJobStore
-    job = RedisJobStore().get_job(job_id)
+    job = redis_store.get_job(job_id)
     if not job or not job_id.startswith(f"job_{business_id}_"):
         raise HTTPException(status_code=404, detail="Job not found")
     return job
@@ -179,17 +175,13 @@ def get_rate_limit_status(business_id: str):
 async def check_rate_limit(business_id: str):
     """Check and update rate limit for business"""
     key = f"rate_limit:{business_id}"
-    pipeline = rate_limit_redis.pipeline()
     
-    # Increment request count
-    pipeline.incr(key)
-    # Set expiration to 1 minute
-    pipeline.expire(key, 60)
+    # Increment request count and set expiration atomically
+    current = rate_limit_redis.incr(key)
+    if current == 1:
+        rate_limit_redis.expire(key, 60)
     
-    # Get current count
-    current = rate_limit_redis.get(key)
-    
-    if int(current) if current else 0 > 10:
+    if current > 10:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Rate limit exceeded. Maximum 10 requests per minute."
