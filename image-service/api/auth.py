@@ -14,10 +14,19 @@ class APIKeyAuth:
     
     def __init__(self):
         # Load business API keys from config file
+        # Use absolute path or default to current directory if not found in api/
         config_path = os.getenv('BUSINESS_API_KEYS_CONFIG', 'api/business_keys.json')
         
         if not os.path.exists(config_path):
-            raise FileNotFoundError(f"API keys config file not found at {config_path}")
+            # Fallback for different container run contexts
+            alt_path = 'business_keys.json'
+            if os.path.exists(alt_path):
+                config_path = alt_path
+            else:
+                # For local dev without keys, we can create a dummy one or handle it gracefully
+                # But if NO_AUTH is handled elsewhere, we still need this to not crash on init
+                self.business_keys = {}
+                return
         
         with open(config_path, 'r') as f:
             self.business_keys = json.load(f)

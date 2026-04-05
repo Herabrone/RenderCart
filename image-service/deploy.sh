@@ -198,8 +198,8 @@ if [ "$WORKERS_ONLY" = false ]; then
     echo ""
 
 # Check API health
-MAX_RETRIES=30
-RETRY_DELAY=5
+MAX_RETRIES=60
+RETRY_DELAY=10
 API_READY=false
 
 for ((i=1; i<=$MAX_RETRIES; i++)); do

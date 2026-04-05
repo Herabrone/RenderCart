@@ -165,7 +165,7 @@ async def upload_image(
         filename = f"{business_id}_{timestamp}_{file.filename}"
         
         # Upload to R2
-        url = storage.upload_file(contents, filename)
+        url = storage.upload_image(contents, filename)
         
         return {"url": url}
     except HTTPException:

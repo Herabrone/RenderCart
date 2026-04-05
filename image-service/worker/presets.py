@@ -7,6 +7,46 @@ from typing import Dict, Any
 
 # Style presets mapping
 STYLE_PRESETS = {
+    "realistic": {
+        "prompt_template": "{user_prompt}, professional photography, natural lighting, realistic colors, high quality, 8K, sharp focus",
+        "inference_kwargs": {
+            "steps": 30,
+            "guidance_scale": 7.5,
+            "strength": 0.7
+        }
+    },
+    "cartoon": {
+        "prompt_template": "{user_prompt}, cartoon style, 2D illustration, vibrant colors, clean lines, high quality",
+        "inference_kwargs": {
+            "steps": 25,
+            "guidance_scale": 8.0,
+            "strength": 0.65
+        }
+    },
+    "anime": {
+        "prompt_template": "{user_prompt}, anime style, digital art, stylized, high resolution, Japanese animation style",
+        "inference_kwargs": {
+            "steps": 25,
+            "guidance_scale": 7.5,
+            "strength": 0.7
+        }
+    },
+    "watercolor": {
+        "prompt_template": "{user_prompt}, watercolor painting, artistic, soft edges, hand-painted texture, high quality",
+        "inference_kwargs": {
+            "steps": 30,
+            "guidance_scale": 7.0,
+            "strength": 0.75
+        }
+    },
+    "sketch": {
+        "prompt_template": "{user_prompt}, pencil sketch, hand-drawn, black and white, detailed lines, graphite texture",
+        "inference_kwargs": {
+            "steps": 25,
+            "guidance_scale": 8.5,
+            "strength": 0.8
+        }
+    },
     "lifestyle": {
         "prompt_template": "{user_prompt}, professional lifestyle photography, natural lighting, realistic colors, outdoor setting, high quality, 8K",
         "inference_kwargs": {
