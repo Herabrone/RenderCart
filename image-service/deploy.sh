@@ -60,7 +60,7 @@ echo "✅ Docker Compose available"
 # Check NVIDIA runtime
 if ! docker info | grep -q "NVIDIA"; then
     echo "⚠️  NVIDIA Docker runtime not detected. Installing..."
-    docker run --rm --privileged nvidia/cuda:nvidia-cuda11-cudnn8-runtime-ubuntu20.04 nvidia-smi || true
+    docker run --rm --privileged nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi || true
 fi
 
 echo "✅ NVIDIA Docker runtime available"

@@ -20,7 +20,7 @@ from typing import List, Dict, Any, Optional
 class GPUSpec:
     """Represents GPU specifications and capabilities."""
     
-    def __init__(self, index: int, name: str, memory_mb: int, compute_cap: str):
+    def __init__(self, index: int, name: str, memory_mb: int, compute_cap: str = "unknown"):
         self.index = index
         self.name = name
         self.memory_mb = memory_mb
@@ -43,7 +43,7 @@ class GPUPlanner:
         """Detect available NVIDIA GPUs using nvidia-smi."""
         try:
             result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=index,name,memory.total,compute_capability",
+                ["nvidia-smi", "--query-gpu=index,name,memory.total",
                  "--format=csv,noheader"],
                 capture_output=True,
                 text=True,
@@ -55,16 +55,17 @@ class GPUPlanner:
                 if not line.strip():
                     continue
                 parts = [p.strip() for p in line.split(',')]
-                if len(parts) >= 4:
+                if len(parts) >= 3:
                     # Parse memory from "MiB" format
                     memory_match = re.search(r'(\d+)', parts[2])
                     memory_mb = int(memory_match.group(1)) if memory_match else 0
+                    compute_cap = parts[3] if len(parts) >= 4 else "unknown"
                     
                     gpu = GPUSpec(
                         index=int(parts[0]),
                         name=parts[1],
                         memory_mb=memory_mb,
-                        compute_cap=parts[3]
+                        compute_cap=compute_cap
                     )
                     self.gpus.append(gpu)
             
