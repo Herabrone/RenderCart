@@ -209,6 +209,24 @@ class GPUPlanner:
         """Generate Docker Compose services for workers based on GPU roles."""
         services = {}
 
+        def command_for_role(role: str) -> List[str]:
+            if role == "main":
+                queues = "generate"
+            elif role == "light":
+                queues = "generate,preprocess,upload"
+            else:
+                queues = "download,preprocess,status"
+
+            return [
+                "celery",
+                "-A",
+                "worker",
+                "worker",
+                "--loglevel=info",
+                "--concurrency=1",
+                f"--queues={queues}",
+            ]
+
         # Create main workers (1 GPU each)
         for i, gpu in enumerate(self.gpus, 1):
             if gpu.role != 'main':
@@ -219,6 +237,7 @@ class GPUPlanner:
                     'context': '.',
                     'dockerfile': 'worker/Dockerfile'
                 },
+                'command': command_for_role('main'),
                 'environment': {
                     'REDIS_HOST': 'redis',
                     'REDIS_PORT': '6379',
@@ -261,6 +280,7 @@ class GPUPlanner:
                     'context': '.',
                     'dockerfile': 'worker/Dockerfile'
                 },
+                'command': command_for_role('light'),
                 'environment': {
                     'REDIS_HOST': 'redis',
                     'REDIS_PORT': '6379',
@@ -303,6 +323,7 @@ class GPUPlanner:
                     'context': '.',
                     'dockerfile': 'worker/Dockerfile'
                 },
+                'command': command_for_role('preprocess'),
                 'environment': {
                     'REDIS_HOST': 'redis',
                     'REDIS_PORT': '6379',
@@ -352,6 +373,12 @@ class GPUPlanner:
                 yaml_lines.append(f'      context: {service_config["build"]["context"]}')
                 yaml_lines.append(f'      dockerfile: {service_config["build"]["dockerfile"]}')
             
+            # Environment
+            if 'command' in service_config:
+                yaml_lines.append('    command:')
+                for item in service_config['command']:
+                    yaml_lines.append(f'      - {item}')
+
             # Environment
             if 'environment' in service_config:
                 yaml_lines.append('    environment:')

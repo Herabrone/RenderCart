@@ -24,24 +24,6 @@ const ImageUpload = ({ onImageUpload }) => {
     e.dataTransfer.dropEffect = 'copy';
   }, []);
 
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    
-    const files = e.dataTransfer.files;
-    if (files.length) {
-      handleFiles(files);
-    }
-  }, []);
-
-  const handleFileChange = useCallback((e) => {
-    const files = e.target.files;
-    if (files.length) {
-      handleFiles(files);
-    }
-  }, []);
-
   const handleFiles = useCallback(async (files) => {
     const file = files[0];
     
@@ -78,6 +60,24 @@ const ImageUpload = ({ onImageUpload }) => {
       setUploading(false);
     }
   }, [onImageUpload]);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length) {
+      handleFiles(files);
+    }
+  }, [handleFiles]);
+
+  const handleFileChange = useCallback((e) => {
+    const files = e.target.files;
+    if (files.length) {
+      handleFiles(files);
+    }
+  }, [handleFiles]);
 
   return (
     <div className="image-upload">

@@ -66,9 +66,11 @@ def setup_logging(correlation_id: Optional[str] = None) -> logging.Logger:
     """
     logger = logging.getLogger('rendercart')
     logger.setLevel(get_log_level())
+    root_logger = logging.getLogger()
+    root_logger.setLevel(get_log_level())
     
     # Prevent adding multiple handlers
-    if logger.handlers:
+    if root_logger.handlers:
         return logger
     
     # Create console handler
@@ -87,8 +89,8 @@ def setup_logging(correlation_id: Optional[str] = None) -> logging.Logger:
     )
     console_handler.setFormatter(formatter)
     
-    # Add handler to logger
-    logger.addHandler(console_handler)
+    # Add handler to root logger so child loggers emit JSON consistently
+    root_logger.addHandler(console_handler)
     
     # Set correlation ID if provided
     if correlation_id:

@@ -95,17 +95,17 @@ h2 {
 }
 
 /* Sections */
-.section-wrapper {
+.section-wrapper,
+.upload-section,
+.form-section,
+.job-status-section,
+.results-section {
   background-color: var(--bg-secondary);
   border-radius: 12px;
   border: 1px solid var(--border);
   padding: 2rem;
   margin-bottom: 2rem;
   transition: transform 0.2s;
-}
-
-.upload-section, .form-section, .job-status-section, .results-section {
-  @extend .section-wrapper;
 }
 
 /* Image Upload Area */

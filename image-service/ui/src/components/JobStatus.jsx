@@ -4,7 +4,7 @@ import axios from 'axios';
 const JobStatus = ({ jobId, onImagesGenerated }) => {
   const [status, setStatus] = useState('pending');
   const [progress, setProgress] = useState(0);
-  const [images, setImages] = useState([]);
+  const [step, setStep] = useState('');
   const [error, setError] = useState(null);
   
   useEffect(() => {
@@ -15,12 +15,12 @@ const JobStatus = ({ jobId, onImagesGenerated }) => {
         const response = await axios.get(`/api/job/${jobId}`);
 
         setStatus(response.data.status);
-        setProgress(response.data.progress || response.data.progress || 0);
+        setProgress(response.data.progress || 0);
+        setStep(response.data.step || '');
         
         // Use result_urls if available, otherwise fall back to output_urls
         const images = response.data.result_urls || response.data.output_urls || [];
         if (images && images.length > 0) {
-          setImages(images);
           onImagesGenerated(images);
         }
       } catch (err) {
@@ -51,8 +51,8 @@ const JobStatus = ({ jobId, onImagesGenerated }) => {
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-dim)', textAlign: 'right' }}>
             {status === 'processing' ?
-              response.data.step ?
-                `${progress}% complete - ${response.data.step}` :
+              step ?
+                `${progress}% complete - ${step}` :
                 `${progress}% complete` :
               'Initializing...'}
           </div>

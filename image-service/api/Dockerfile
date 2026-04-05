@@ -5,6 +5,7 @@ WORKDIR /app
 COPY api/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY logging_config.py ./
 COPY api/ ./
 
 EXPOSE 8000

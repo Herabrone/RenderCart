@@ -35,8 +35,9 @@ v1_router = APIRouter(prefix="/v1", tags=["v1"])
 @v1_router.post("/generate", status_code=status.HTTP_202_ACCEPTED)
 async def v1_generate(
     request: GenerateRequest,
+    http_request: Request,
     business_id: str = Depends(APIKeyAuth().verify_api_key)
-) -> dict:
+) -> JobResponse:
     """Generate images via API v1 with optional webhook callback."""
     # Logic is identical for now but partitioned for versioning
     job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
@@ -65,14 +66,16 @@ async def v1_generate(
     celery.send_task(
         "worker.process_job",
         args=[job_id, request.image_url, request.prompt, request.style.value, business_id, request.num_outputs],
-        kwargs={"callback_url": request.callback_url}
+        kwargs={
+            "callback_url": request.callback_url,
+            "correlation_id": getattr(http_request.state, "correlation_id", None),
+        }
     )
     
-    return {
-        "job_id": job_id,
-        "status": "pending",
-        "message": "Job submitted successfully. Results will be sent to callback_url if provided."
-    }
+    created_job = RedisJobStore().get_job(job_id)
+    if created_job is None:
+        raise HTTPException(status_code=500, detail="Failed to create job record")
+    return created_job
 
 @v1_router.get("/job/{job_id}")
 async def v1_get_job(
@@ -195,8 +198,9 @@ async def check_rate_limit(business_id: str):
 @app.post("/generate", status_code=status.HTTP_202_ACCEPTED)
 async def generate_image(
     request: GenerateRequest,
+    http_request: Request,
     business_id: str = Depends(api_auth.verify_api_key_dependency)
-) -> dict:
+) -> JobResponse:
     """Generate images from input image and prompt"""
     try:
         # Check rate limit
@@ -224,10 +228,16 @@ async def generate_image(
         celery.send_task(
             "worker.process_job",
             args=[job_id, request.image_url, request.prompt, request.style.value, business_id, request.num_outputs],
-            kwargs={"callback_url": request.callback_url}
+            kwargs={
+                "callback_url": request.callback_url,
+                "correlation_id": getattr(http_request.state, "correlation_id", None),
+            }
         )
         
-        return {"job_id": job_id}
+        created_job = redis_store.get_job(job_id)
+        if created_job is None:
+            raise HTTPException(status_code=500, detail="Failed to create job record")
+        return created_job
     except HTTPException:
         raise
     except Exception as e:

@@ -11,6 +11,7 @@ WORKDIR /app
 COPY worker/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY logging_config.py ./
 COPY worker/ ./
 
 CMD ["celery", "-A", "worker", "worker", "--loglevel=info", "--concurrency=1"]

@@ -1,54 +1,42 @@
-"""
-Celery worker for image generation pipeline.
-Processes jobs through a chain of tasks:
-1. download_input_image
-2. preprocess (rembg + resize)
-3. generate_images (SDXL img2img)
-4. upload_results (R2)
-5. update_job_status
-"""
+"""Celery worker for image generation pipeline."""
 
 import os
-import sys
 import time
 import tempfile
 import traceback
 import logging
 from io import BytesIO
-from typing import List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import redis
 import requests
+import torch
 from celery import Celery, signature
 from celery.exceptions import Ignore, Retry
+from diffusers import StableDiffusionXLImg2ImgPipeline
 from kombu import Queue
 from PIL import Image
-import torch
-from diffusers import StableDiffusionXLImg2ImgPipeline
 from rembg import remove
 
+from logging_config import log_event, setup_logging
 from presets import apply_style_to_prompt, get_inference_params
-from logging_config import setup_logging
 
-# Setup structured logging
-logger = logging.getLogger(__name__)
-setup_logging()
+LOGGER = setup_logging()
+logger = logging.getLogger("rendercart.worker")
 
-# Initialize Celery
 celery = Celery(
     "tasks",
     broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
-    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0"),
 )
 
-# Configure Celery queues and routing
 celery.conf.task_queues = (
     Queue("download"),
     Queue("preprocess"),
     Queue("generate"),
     Queue("upload"),
-    Queue("status")
+    Queue("status"),
 )
 
 celery.conf.task_routes = {
@@ -57,269 +45,76 @@ celery.conf.task_routes = {
     "tasks.preprocess_image": {"queue": "preprocess"},
     "tasks.generate_images": {"queue": "generate"},
     "tasks.upload_results": {"queue": "upload"},
-    "tasks.update_job_status": {"queue": "status"}
+    "tasks.update_job_status": {"queue": "status"},
 }
 celery.conf.task_default_queue = "generate"
 
-# Redis connection for job tracking
 redis_conn = redis.Redis(
-    host=os.getenv('REDIS_HOST', 'redis'),
-    port=int(os.getenv('REDIS_PORT', 6379)),
-    password=os.getenv('REDIS_PASSWORD', ''),
-    decode_responses=True
+    host=os.getenv("REDIS_HOST", "redis"),
+    port=int(os.getenv("REDIS_PORT", 6379)),
+    password=os.getenv("REDIS_PASSWORD", ""),
+    decode_responses=True,
 )
 
-# Load SDXL pipeline (lazy initialization)
-_sdxl_pipeline = None
+_sdxl_pipeline: Optional[StableDiffusionXLImg2ImgPipeline] = None
 
-# GPU preflight checks
 
-def check_gpu_availability():
-    """
-    Perform GPU preflight checks before starting the worker.
-    
-    Returns:
-        bool: True if GPU is available and working, False otherwise
-    """
+def check_gpu_availability() -> bool:
+    """Run quick CUDA checks and emit diagnostics."""
     try:
-        # Check if CUDA is available
         if not torch.cuda.is_available():
-            logger.error("CUDA not available. GPU worker cannot start.")
+            logger.error("CUDA unavailable for worker")
             return False
-        
-        # Get CUDA device
-        device = torch.device("cuda")
-        logger.info("CUDA available", extra={"device": torch.cuda.get_device_name(device)})
-        
-        # Test CUDA functionality
-        test_tensor = torch.randn(1, 3, 256, 256, device=device)
-        result = test_tensor.sum()
-        logger.info("CUDA functional test passed", extra={"sum": result.item()})
-        
-        # Check memory
-        total_mem = torch.cuda.get_device_properties(device).total_memory / 1024**3
-        free_mem = torch.cuda.mem_get_info(device)[1] / 1024**3
-        logger.info("GPU memory info", extra={"total_gb": total_mem, "free_gb": free_mem})
-        
-        if free_mem < 2:
-            logger.warning("Low GPU memory available. Worker may experience issues.")
-        
+
+        device_index = 0
+        device_name = torch.cuda.get_device_name(device_index)
+        total_mem_gb = torch.cuda.get_device_properties(device_index).total_memory / (1024 ** 3)
+        free_mem_bytes, _ = torch.cuda.mem_get_info(device_index)
+        free_mem_gb = free_mem_bytes / (1024 ** 3)
+
+        log_event(
+            LOGGER,
+            event_type="gpu_preflight",
+            status="ok",
+            message="CUDA preflight checks passed",
+            gpu_name=device_name,
+            total_gb=round(total_mem_gb, 2),
+            free_gb=round(free_mem_gb, 2),
+        )
+
+        if free_mem_gb < 2:
+            logger.warning("Low available GPU memory", extra={"free_gb": round(free_mem_gb, 2)})
         return True
-        
-    except Exception as e:
-        error_msg = f"GPU preflight check failed: {str(e)}"
-        logger.error("GPU preflight check failed", extra={"error": error_msg})
-        traceback.print_exc()
-        return False
-
-# Run GPU preflight check on startup
-if __name__ == "__main__":
-    logger.info("Running GPU preflight checks")
-    if not check_gpu_availability():
-        logger.error("GPU preflight check failed. Exiting worker.")
-        sys.exit(1)
-    logger.info("GPU preflight checks passed. Starting worker")
-
-
-def get_sdxl_pipeline():
-    """Get or create SDXL pipeline with cache."""
-    global _sdxl_pipeline
-    if _sdxl_pipeline is None:
-        print("Loading SDXL pipeline...")
-        _sdxl_pipeline = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16,
-            variant="fp16",
-            safety_checker=None
-        ).to("cuda")
-        print("SDXL pipeline loaded")
-    return _sdxl_pipeline
-
-import os
-import sys
-import time
-import tempfile
-import traceback
-from io import BytesIO
-from typing import List, Dict, Any
-from datetime import datetime
-
-import redis
-import requests
-from celery import Celery, signature
-from celery.exceptions import Ignore, Retry
-from kombu import Queue
-from PIL import Image
-import torch
-from diffusers import StableDiffusionXLImg2ImgPipeline
-from rembg import remove
-
-from presets import apply_style_to_prompt, get_inference_params
-
-# Initialize Celery
-celery = Celery(
-    "tasks",
-    broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
-    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
-)
-
-# Configure Celery queues and routing
-celery.conf.task_queues = (
-    Queue("download"),
-    Queue("preprocess"),
-    Queue("generate"),
-    Queue("upload"),
-    Queue("status")
-)
-
-celery.conf.task_routes = {
-    "worker.process_job": {"queue": "generate"},
-    "tasks.download_input_image": {"queue": "download"},
-    "tasks.preprocess_image": {"queue": "preprocess"},
-    "tasks.generate_images": {"queue": "generate"},
-    "tasks.upload_results": {"queue": "upload"},
-    "tasks.update_job_status": {"queue": "status"}
-}
-celery.conf.task_default_queue = "generate"
-
-# Redis connection for job tracking
-redis_conn = redis.Redis(
-    host=os.getenv('REDIS_HOST', 'redis'),
-    port=int(os.getenv('REDIS_PORT', 6379)),
-    password=os.getenv('REDIS_PASSWORD', ''),
-    decode_responses=True
-)
-
-# Load SDXL pipeline (lazy initialization)
-_sdxl_pipeline = None
-
-# GPU preflight checks
-
-def check_gpu_availability():
-    """
-    Perform GPU preflight checks before starting the worker.
-    
-    Returns:
-        bool: True if GPU is available and working, False otherwise
-    """
-    try:
-        # Check if CUDA is available
-        if not torch.cuda.is_available():
-            print("❌ CUDA not available. GPU worker cannot start.")
-            return False
-        
-        # Get CUDA device
-        device = torch.device("cuda")
-        print(f"✅ CUDA available: {torch.cuda.get_device_name(device)}")
-        
-        # Test CUDA functionality
-        test_tensor = torch.randn(1, 3, 256, 256, device=device)
-        result = test_tensor.sum()
-        print(f"✅ CUDA functional test passed: sum = {result.item()}")
-        
-        # Check memory
-        total_mem = torch.cuda.get_device_properties(device).total_memory / 1024**3
-        free_mem = torch.cuda.mem_get_info(device)[1] / 1024**3
-        print(f"✅ GPU memory: {total_mem:.2f}GB total, {free_mem:.2f}GB free")
-        
-        if free_mem < 2:
-            print("⚠️  Low GPU memory available. Worker may experience issues.")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ GPU preflight check failed: {str(e)}")
-        traceback.print_exc()
+    except Exception as exc:
+        logger.error("GPU preflight check failed", extra={"error": str(exc)})
         return False
 
 
-def get_sdxl_pipeline():
-    """Get or create SDXL pipeline with cache."""
+def get_sdxl_pipeline() -> StableDiffusionXLImg2ImgPipeline:
+    """Create pipeline lazily once per worker process."""
     global _sdxl_pipeline
     if _sdxl_pipeline is None:
-        print("Loading SDXL pipeline...")
-        _sdxl_pipeline = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16,
-            variant="fp16",
-            safety_checker=None
-        ).to("cuda")
-        print("SDXL pipeline loaded")
-    return _sdxl_pipeline
-
-import os
-import time
-import tempfile
-import traceback
-from io import BytesIO
-from typing import List, Dict, Any
-from datetime import datetime
-
-import redis
-import requests
-from celery import Celery, signature
-from celery.exceptions import Ignore, Retry
-from kombu import Queue
-from PIL import Image
-import torch
-from diffusers import StableDiffusionXLImg2ImgPipeline
-from rembg import remove
-
-from presets import apply_style_to_prompt, get_inference_params
-
-# Initialize Celery
-celery = Celery(
-    "tasks",
-    broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
-    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
-)
-
-# Configure Celery queues and routing
-celery.conf.task_queues = (
-    Queue("download"),
-    Queue("preprocess"),
-    Queue("generate"),
-    Queue("upload"),
-    Queue("status")
-)
-
-celery.conf.task_routes = {
-    "worker.process_job": {"queue": "generate"},
-    "tasks.download_input_image": {"queue": "download"},
-    "tasks.preprocess_image": {"queue": "preprocess"},
-    "tasks.generate_images": {"queue": "generate"},
-    "tasks.upload_results": {"queue": "upload"},
-    "tasks.update_job_status": {"queue": "status"}
-}
-celery.conf.task_default_queue = "generate"
-
-# Redis connection for job tracking
-redis_conn = redis.Redis(
-    host=os.getenv('REDIS_HOST', 'redis'),
-    port=int(os.getenv('REDIS_PORT', 6379)),
-    password=os.getenv('REDIS_PASSWORD', ''),
-    decode_responses=True
-)
-
-# Load SDXL pipeline (lazy initialization)
-_sdxl_pipeline = None
-
-def get_sdxl_pipeline():
-    """Get or create SDXL pipeline with cache."""
-    global _sdxl_pipeline
-    if _sdxl_pipeline is None:
+        if not check_gpu_availability():
+            raise RuntimeError("GPU preflight check failed. CUDA device is required for generation.")
         logger.info("Loading SDXL pipeline")
         _sdxl_pipeline = StableDiffusionXLImg2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
             torch_dtype=torch.float16,
             variant="fp16",
-            safety_checker=None
+            safety_checker=None,
         ).to("cuda")
         logger.info("SDXL pipeline loaded")
     return _sdxl_pipeline
 
 
-def update_job_status(job_id: str, status: str, progress: int = None, step: str = None, result_urls: List[str] = None, error: str = None):
+def update_job_status(
+    job_id: str,
+    status: str,
+    progress: Optional[int] = None,
+    step: Optional[str] = None,
+    result_urls: Optional[List[str]] = None,
+    error: Optional[str] = None,
+):
     """
     Update job status in Redis with consistent fields.
     
@@ -331,7 +126,10 @@ def update_job_status(job_id: str, status: str, progress: int = None, step: str 
         result_urls: List of result URLs
         error: Error message (if any)
     """
-    logger.info("Updating job status", extra={"job_id": job_id, "status": status, "progress": progress, "step": step})
+    logger.info(
+        "Updating job status",
+        extra={"job_id": job_id, "status": status, "progress": progress, "step": step},
+    )
     
     job_data = {
         "status": status,
@@ -546,7 +344,7 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
         raise Ignore()
 
 
-def finalize_job(job_id: str, upload_result: Dict[str, Any]):
+def finalize_job(job_id: str, upload_result: Dict[str, Any]) -> Dict[str, Any]:
     """
     Finalize job and update status to completed.
     
@@ -565,7 +363,13 @@ def finalize_job(job_id: str, upload_result: Dict[str, Any]):
             "completed_at": datetime.utcnow().isoformat()
         }
         
-        update_job_status(job_id, "completed", progress=100, step="completed", result_urls=result)
+        update_job_status(
+            job_id,
+            "completed",
+            progress=100,
+            step="completed",
+            result_urls=result["r2_urls"],
+        )
         logger.info("Job completed", extra={"job_id": job_id, "result": result})
         
         return result
@@ -578,7 +382,17 @@ def finalize_job(job_id: str, upload_result: Dict[str, Any]):
 
 
 @celery.task(bind=True, max_retries=3, name="worker.process_job")
-def process_job(self, job_id: str, image_url: str, prompt: str, style: str, business_id: str, num_outputs: int = 1, callback_url: str = None):
+def process_job(
+    self,
+    job_id: str,
+    image_url: str,
+    prompt: str,
+    style: str,
+    business_id: str,
+    num_outputs: int = 1,
+    callback_url: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+):
     """
     Main task to process a job through the pipeline.
     
@@ -592,7 +406,18 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
         callback_url: Optional URL to send webhook results
     """
     try:
-        logger.info("Starting job processing", extra={"job_id": job_id, "business_id": business_id, "num_outputs": num_outputs})
+        if correlation_id:
+            os.environ["CORRELATION_ID"] = correlation_id
+
+        log_event(
+            LOGGER,
+            event_type="processing_started",
+            job_id=job_id,
+            status="processing",
+            business_id=business_id,
+            num_outputs=num_outputs,
+            correlation_id=correlation_id,
+        )
         
         # Apply style to prompt
         styled_prompt = apply_style_to_prompt(prompt, style)
@@ -624,7 +449,13 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
         except OSError:
             pass
 
-        logger.info("Job completed successfully", extra={"job_id": job_id})
+        log_event(
+            LOGGER,
+            event_type="completed",
+            job_id=job_id,
+            status="completed",
+            correlation_id=correlation_id,
+        )
         return result
 
     except Retry as e:
