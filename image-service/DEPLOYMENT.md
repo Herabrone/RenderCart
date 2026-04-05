@@ -37,6 +37,21 @@ This deployment uses a DevOps-first approach with GPU auto-scaling and Tailscale
 docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d
 ```
 
+### Local Deployment Mode
+
+To run the service locally on the server without Tailscale, use:
+
+```bash
+./deploy.sh --local
+# or
+./deploy.sh -l
+```
+
+This mode:
+- skips Tailscale installation and login
+- deploys the API and worker services locally
+- exposes the API on `http://localhost:8000`
+
 ### Worker-Only Redeploy
 
 To redeploy only worker containers (useful when updating worker code without restarting the API):

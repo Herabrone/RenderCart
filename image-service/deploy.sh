@@ -5,14 +5,30 @@ set -e
 
 # Parse command-line arguments
 WORKERS_ONLY=false
+LOCAL_MODE=false
 
-if [ "$#" -gt 0 ]; then
-    if [ "$1" = "--workers-only" ] || [ "$1" = "-w" ]; then
-        WORKERS_ONLY=true
-        echo "🔄 Worker-only redeploy mode enabled"
-        echo ""
-    fi
-fi
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --workers-only|-w)
+            WORKERS_ONLY=true
+            echo "🔄 Worker-only redeploy mode enabled"
+            echo ""
+            shift
+            ;;
+        --local|-l)
+            LOCAL_MODE=true
+            echo "🏠 Local deployment mode enabled"
+            echo "Skipping Tailscale setup and local-only access will be used."
+            echo ""
+            shift
+            ;;
+        *)
+            echo "❌ Unknown option: $1"
+            echo "Usage: ./deploy.sh [--workers-only|-w] [--local|-l]"
+            exit 1
+            ;;
+    esac
+done
 
 echo "=========================================="
 echo "RenderCart Deployment Script"
@@ -70,12 +86,12 @@ echo ""
 # TAILSCALE SETUP
 # ============================================================================
 
-if [ "$WORKERS_ONLY" = false ]; then
+if [ "$WORKERS_ONLY" = false ] && [ "$LOCAL_MODE" = false ]; then
     echo "🔗 Setting up Tailscale..."
     echo ""
 
-# Check if Tailscale is installed
-if ! command -v tailscale &> /dev/null; then
+    # Check if Tailscale is installed
+    if ! command -v tailscale &> /dev/null; then
     echo "Tailscale not found. Installing..."
     curl -fsSL https://tailscale.com/install.sh | sh
     echo "Tailscale installed. Please log in:"
@@ -268,13 +284,21 @@ echo ""
 
 if [ "$WORKERS_ONLY" = false ]; then
     echo "API will be accessible at:"
-    echo "  - http://$TAILSCALE_IP:8000"
-    echo "  - http://$(hostname):8000"
-    echo ""
-    
-    echo "To access the API from your laptop:"
-    echo "  curl http://$TAILSCALE_IP:8000"
-    echo ""
+    if [ "$LOCAL_MODE" = true ]; then
+        echo "  - http://localhost:8000"
+        echo "  - http://$(hostname):8000"
+        echo ""
+        echo "To access the API locally on this server:"
+        echo "  curl http://localhost:8000"
+        echo ""
+    else
+        echo "  - http://$TAILSCALE_IP:8000"
+        echo "  - http://$(hostname):8000"
+        echo ""
+        echo "To access the API from your laptop:"
+        echo "  curl http://$TAILSCALE_IP:8000"
+        echo ""
+    fi
 fi
 
 echo "Worker-only redeploy command:"
