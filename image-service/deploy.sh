@@ -197,29 +197,6 @@ if [ "$WORKERS_ONLY" = false ]; then
     echo "✅ Running post-deploy health checks..."
     echo ""
 
-# Check API health
-MAX_RETRIES=60
-RETRY_DELAY=10
-API_READY=false
-
-for ((i=1; i<=$MAX_RETRIES; i++)); do
-    if curl -s http://localhost:8000/api/health > /dev/null 2>&1; then
-        API_READY=true
-        break
-    fi
-    echo "⏳ Waiting for UI/API proxy to be ready ($i/$MAX_RETRIES)..."
-    sleep $RETRY_DELAY
-    if [ $i -lt $MAX_RETRIES ]; then
-        echo "   Retrying in $RETRY_DELAY seconds..."
-    fi
-done
-
-if [ "$API_READY" = true ]; then
-    echo "✅ API is healthy"
-else
-    echo "⚠️  API health check timed out"
-fi
-
 # Check Redis health
 REDIS_READY=false
 for ((i=1; i<=$MAX_RETRIES; i++)); do
@@ -238,6 +215,15 @@ if [ "$REDIS_READY" = true ]; then
     echo "✅ Redis is healthy"
 else
     echo "⚠️  Redis health check timed out"
+    echo "   This may indicate Redis container startup issues"
+fi
+
+# Check worker containers are running
+WORKER_SERVICES=$(docker compose -f docker-compose.yml -f docker-compose.workers.yml ps --services | grep '^worker-' || true)
+if [ -z "$WORKER_SERVICES" ]; then
+    echo "⚠️  No worker services found. Worker containers may not be running."
+else
+    echo "✅ Worker services detected: $(echo "$WORKER_SERVICES" | wc -l) worker(s)"
 fi
 
 # Check Celery workers and queues
@@ -268,8 +254,47 @@ if [ "$CELERY_READY" = true ]; then
     else
         echo "⚠️  Could not verify Celery queues"
     fi
+    
+    # Check specific queues exist
+    QUEUE_CHECK=false
+    for queue in download preprocess generate upload status; do
+        if docker compose -f docker-compose.yml -f docker-compose.workers.yml exec "$WORKER_SERVICE" celery -A worker inspect active_queues 2>/dev/null | grep -q "$queue"; then
+            echo "✅ Queue '$queue' is active"
+            QUEUE_CHECK=true
+        else
+            echo "⚠️  Queue '$queue' not found or not active"
+        fi
+    done
+    
+    if [ "$QUEUE_CHECK" = true ]; then
+        echo "✅ All required queues are active"
+    else
+        echo "⚠️  Some queues may not be properly configured"
+    fi
 else
     echo "⚠️  Celery health check timed out"
+    echo "   This may indicate worker startup issues or missing GPU resources"
+fi
+
+# Check API health
+API_READY=false
+for ((i=1; i<=$MAX_RETRIES; i++)); do
+    if curl -s http://localhost:8000/api/health > /dev/null 2>&1; then
+        API_READY=true
+        break
+    fi
+    echo "⏳ Waiting for UI/API proxy to be ready ($i/$MAX_RETRIES)..."
+    sleep $RETRY_DELAY
+    if [ $i -lt $MAX_RETRIES ]; then
+        echo "   Retrying in $RETRY_DELAY seconds..."
+    fi
+done
+
+if [ "$API_READY" = true ]; then
+    echo "✅ API is healthy"
+else
+    echo "⚠️  API health check timed out"
+    echo "   This may indicate API container or dependency issues"
 fi
 
 fi

@@ -9,6 +9,238 @@ Processes jobs through a chain of tasks:
 """
 
 import os
+import sys
+import time
+import tempfile
+import traceback
+from io import BytesIO
+from typing import List, Dict, Any
+from datetime import datetime
+
+import redis
+import requests
+from celery import Celery, signature
+from celery.exceptions import Ignore, Retry
+from kombu import Queue
+from PIL import Image
+import torch
+from diffusers import StableDiffusionXLImg2ImgPipeline
+from rembg import remove
+
+from presets import apply_style_to_prompt, get_inference_params
+
+# Initialize Celery
+celery = Celery(
+    "tasks",
+    broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
+    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+)
+
+# Configure Celery queues and routing
+celery.conf.task_queues = (
+    Queue("download"),
+    Queue("preprocess"),
+    Queue("generate"),
+    Queue("upload"),
+    Queue("status")
+)
+
+celery.conf.task_routes = {
+    "worker.process_job": {"queue": "generate"},
+    "tasks.download_input_image": {"queue": "download"},
+    "tasks.preprocess_image": {"queue": "preprocess"},
+    "tasks.generate_images": {"queue": "generate"},
+    "tasks.upload_results": {"queue": "upload"},
+    "tasks.update_job_status": {"queue": "status"}
+}
+celery.conf.task_default_queue = "generate"
+
+# Redis connection for job tracking
+redis_conn = redis.Redis(
+    host=os.getenv('REDIS_HOST', 'redis'),
+    port=int(os.getenv('REDIS_PORT', 6379)),
+    password=os.getenv('REDIS_PASSWORD', ''),
+    decode_responses=True
+)
+
+# Load SDXL pipeline (lazy initialization)
+_sdxl_pipeline = None
+
+# GPU preflight checks
+
+def check_gpu_availability():
+    """
+    Perform GPU preflight checks before starting the worker.
+    
+    Returns:
+        bool: True if GPU is available and working, False otherwise
+    """
+    try:
+        # Check if CUDA is available
+        if not torch.cuda.is_available():
+            print("❌ CUDA not available. GPU worker cannot start.")
+            return False
+        
+        # Get CUDA device
+        device = torch.device("cuda")
+        print(f"✅ CUDA available: {torch.cuda.get_device_name(device)}")
+        
+        # Test CUDA functionality
+        test_tensor = torch.randn(1, 3, 256, 256, device=device)
+        result = test_tensor.sum()
+        print(f"✅ CUDA functional test passed: sum = {result.item()}")
+        
+        # Check memory
+        total_mem = torch.cuda.get_device_properties(device).total_memory / 1024**3
+        free_mem = torch.cuda.mem_get_info(device)[1] / 1024**3
+        print(f"✅ GPU memory: {total_mem:.2f}GB total, {free_mem:.2f}GB free")
+        
+        if free_mem < 2:
+            print("⚠️  Low GPU memory available. Worker may experience issues.")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ GPU preflight check failed: {str(e)}")
+        traceback.print_exc()
+        return False
+
+# Run GPU preflight check on startup
+if __name__ == "__main__":
+    print("🔍 Running GPU preflight checks...")
+    if not check_gpu_availability():
+        print("❌ GPU preflight check failed. Exiting worker.")
+        sys.exit(1)
+    print("✅ GPU preflight checks passed. Starting worker...")
+
+
+def get_sdxl_pipeline():
+    """Get or create SDXL pipeline with cache."""
+    global _sdxl_pipeline
+    if _sdxl_pipeline is None:
+        print("Loading SDXL pipeline...")
+        _sdxl_pipeline = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            torch_dtype=torch.float16,
+            variant="fp16",
+            safety_checker=None
+        ).to("cuda")
+        print("SDXL pipeline loaded")
+    return _sdxl_pipeline
+
+import os
+import sys
+import time
+import tempfile
+import traceback
+from io import BytesIO
+from typing import List, Dict, Any
+from datetime import datetime
+
+import redis
+import requests
+from celery import Celery, signature
+from celery.exceptions import Ignore, Retry
+from kombu import Queue
+from PIL import Image
+import torch
+from diffusers import StableDiffusionXLImg2ImgPipeline
+from rembg import remove
+
+from presets import apply_style_to_prompt, get_inference_params
+
+# Initialize Celery
+celery = Celery(
+    "tasks",
+    broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
+    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+)
+
+# Configure Celery queues and routing
+celery.conf.task_queues = (
+    Queue("download"),
+    Queue("preprocess"),
+    Queue("generate"),
+    Queue("upload"),
+    Queue("status")
+)
+
+celery.conf.task_routes = {
+    "worker.process_job": {"queue": "generate"},
+    "tasks.download_input_image": {"queue": "download"},
+    "tasks.preprocess_image": {"queue": "preprocess"},
+    "tasks.generate_images": {"queue": "generate"},
+    "tasks.upload_results": {"queue": "upload"},
+    "tasks.update_job_status": {"queue": "status"}
+}
+celery.conf.task_default_queue = "generate"
+
+# Redis connection for job tracking
+redis_conn = redis.Redis(
+    host=os.getenv('REDIS_HOST', 'redis'),
+    port=int(os.getenv('REDIS_PORT', 6379)),
+    password=os.getenv('REDIS_PASSWORD', ''),
+    decode_responses=True
+)
+
+# Load SDXL pipeline (lazy initialization)
+_sdxl_pipeline = None
+
+# GPU preflight checks
+
+def check_gpu_availability():
+    """
+    Perform GPU preflight checks before starting the worker.
+    
+    Returns:
+        bool: True if GPU is available and working, False otherwise
+    """
+    try:
+        # Check if CUDA is available
+        if not torch.cuda.is_available():
+            print("❌ CUDA not available. GPU worker cannot start.")
+            return False
+        
+        # Get CUDA device
+        device = torch.device("cuda")
+        print(f"✅ CUDA available: {torch.cuda.get_device_name(device)}")
+        
+        # Test CUDA functionality
+        test_tensor = torch.randn(1, 3, 256, 256, device=device)
+        result = test_tensor.sum()
+        print(f"✅ CUDA functional test passed: sum = {result.item()}")
+        
+        # Check memory
+        total_mem = torch.cuda.get_device_properties(device).total_memory / 1024**3
+        free_mem = torch.cuda.mem_get_info(device)[1] / 1024**3
+        print(f"✅ GPU memory: {total_mem:.2f}GB total, {free_mem:.2f}GB free")
+        
+        if free_mem < 2:
+            print("⚠️  Low GPU memory available. Worker may experience issues.")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ GPU preflight check failed: {str(e)}")
+        traceback.print_exc()
+        return False
+
+
+def get_sdxl_pipeline():
+    """Get or create SDXL pipeline with cache."""
+    global _sdxl_pipeline
+    if _sdxl_pipeline is None:
+        print("Loading SDXL pipeline...")
+        _sdxl_pipeline = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            torch_dtype=torch.float16,
+            variant="fp16",
+            safety_checker=None
+        ).to("cuda")
+        print("SDXL pipeline loaded")
+    return _sdxl_pipeline
+
+import os
 import time
 import tempfile
 import traceback

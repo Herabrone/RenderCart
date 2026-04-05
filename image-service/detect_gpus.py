@@ -140,7 +140,18 @@ class GPUPlanner:
         # Ensure a single 3060-like host can still process full generation workloads.
         if len(self.gpus) == 1 and self.gpus[0].role == "preprocess":
             self.gpus[0].role = "light"
-    
+        
+        # Ensure at least one worker can handle the generate queue
+        has_generate_worker = any(gpu.role in ["main", "light"] for gpu in self.gpus)
+        if not has_generate_worker and self.gpus:
+            # If all GPUs are preprocess-only, promote the first one to light
+            self.gpus[0].role = "light"
+            self.gpus[0].settings = {
+                'max_resolution': '1024x1024',
+                'max_batch_size': 1,
+                'priority': 2
+            }
+
     def generate_plan(self) -> Dict[str, Any]:
         """Generate worker plan based on GPU classification."""
         self.plan = {
