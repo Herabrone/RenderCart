@@ -34,32 +34,26 @@ const JobStatus = ({ jobId, onImagesGenerated }) => {
 
   return (
     <div className="job-status">
-      <div className="status-header">
-        <span className="status-label">Job Status:</span>
-        <span className={`status-text ${status}`}>{status}</span>
+      <div className="status-header" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+        <span className="status-label" style={{ fontSize: '14px', color: 'var(--text-dim)' }}>Status:</span>
+        <span className={`status-badge status-${status}`}>{status}</span>
       </div>
       
-      {status === 'processing' && (
+      {(status === 'processing' || status === 'pending') && (
         <div className="progress-container">
-          <div className="progress-bar">
+          <div className="progress-track">
             <div
               className="progress-fill"
-              style={{ width: `${progress}%` }}
+              style={{ width: `${progress || 5}%` }}
             />
           </div>
-          <span className="progress-text">{progress}%</span>
+          <div style={{ fontSize: '12px', color: 'var(--text-dim)', textAlign: 'right' }}>
+            {status === 'processing' ? `${progress}% complete` : 'Initializing...'}
+          </div>
         </div>
       )}
       
-      {status === 'completed' && images.length > 0 && (
-        <div className="results-grid">
-          {images.map((image, index) => (
-            <div key={index} className="result-item">
-              <img src={image} alt={`Generated image ${index + 1}`} className="result-image" />
-            </div>
-          ))}
-        </div>
-      )}
+      {status === 'failed' && <div className="error-message">Generation failed. Please try again.</div>}
       
       {error && <div className="error-message">{error}</div>}
     </div>

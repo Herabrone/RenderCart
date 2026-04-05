@@ -28,46 +28,54 @@ function App() {
 
   const homePage = (
     <div className="main-content">
-      <h1>Image Generation</h1>
+      <div className="main-grid">
+        <div className="card">
+          <div className="card-title">1. Upload Context</div>
+          <ImageUpload onImageUpload={handleImageUpload} />
+          {uploadedImage && (
+            <div className="preview-container" style={{ marginTop: '20px' }}>
+              <img src={uploadedImage} alt="Preview" className="preview-image" />
+            </div>
+          )}
+        </div>
 
-      <div className="upload-section">
-        <h2>Upload Image</h2>
-        <ImageUpload onImageUpload={handleImageUpload} />
-      </div>
-
-      {uploadedImage && (
-        <div className="form-section">
-          <h2>Generate Variations</h2>
+        <div className="card">
+          <div className="card-title">2. Generation Settings</div>
           <GenerateForm
             imageUrl={uploadedImage}
             onJobCreated={handleJobCreated}
           />
         </div>
-      )}
+      </div>
 
-      {jobId && (
-        <div className="job-status-section">
-          <h2>Generation Status</h2>
-          <JobStatus
-            jobId={jobId}
-            onImagesGenerated={handleImagesGenerated}
-          />
-        </div>
-      )}
-
-      {generatedImages.length > 0 && (
-        <div className="results-section">
-          <h2>Generated Images</h2>
-          <div className="image-grid">
-            {generatedImages.map((image, index) => (
-              <img
-                key={index}
-                src={image}
-                alt={`Generated image ${index + 1}`}
-                className="generated-image"
+      {(jobId || generatedImages.length > 0) && (
+        <div className="card" style={{ marginTop: '30px' }}>
+          <div className="card-title">3. Results & Status</div>
+          {jobId && (
+            <div className="job-status-section">
+              <JobStatus
+                jobId={jobId}
+                onImagesGenerated={handleImagesGenerated}
               />
-            ))}
-          </div>
+            </div>
+          )}
+
+          {generatedImages.length > 0 && (
+            <div className="results-section">
+              <div className="image-grid">
+                {generatedImages.map((image, index) => (
+                  <div key={index} className="grid-item">
+                    <img
+                      src={image}
+                      alt={`Generated image ${index + 1}`}
+                      className="grid-image"
+                      onClick={() => window.open(image, '_blank')}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
