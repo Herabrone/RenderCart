@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile
-    ports:
-      - "8000:8000"
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -18,6 +16,16 @@ services:
       - redis
     volumes:
       - hf_cache:/cache/huggingface
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    ports:
+      - "8000:80"
+    depends_on:
+      - api
     restart: unless-stopped
 
   redis:

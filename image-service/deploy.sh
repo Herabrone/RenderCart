@@ -183,7 +183,7 @@ if [ "$WORKERS_ONLY" = true ]; then
     echo "✅ Worker containers redeployed"
 else
     # Full deployment
-    docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d
+    docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d --build
     echo "✅ Services deployed"
 fi
 
@@ -203,11 +203,11 @@ RETRY_DELAY=5
 API_READY=false
 
 for ((i=1; i<=$MAX_RETRIES; i++)); do
-    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+    if curl -s http://localhost:8000/api/health > /dev/null 2>&1; then
         API_READY=true
         break
     fi
-    echo "⏳ Waiting for API to be ready ($i/$MAX_RETRIES)..."
+    echo "⏳ Waiting for UI/API proxy to be ready ($i/$MAX_RETRIES)..."
     sleep $RETRY_DELAY
     if [ $i -lt $MAX_RETRIES ]; then
         echo "   Retrying in $RETRY_DELAY seconds..."
@@ -290,20 +290,20 @@ docker compose -f docker-compose.yml -f docker-compose.workers.yml ps --format "
 echo ""
 
 if [ "$WORKERS_ONLY" = false ]; then
-    echo "API will be accessible at:"
+    echo "UI will be accessible at:"
     if [ "$LOCAL_MODE" = true ]; then
         echo "  - http://localhost:8000"
         echo "  - http://$(hostname):8000"
         echo ""
-        echo "To access the API locally on this server:"
-        echo "  curl http://localhost:8000"
+        echo "API is available through the UI proxy at:"
+        echo "  - http://localhost:8000/api/health"
         echo ""
     else
         echo "  - http://$TAILSCALE_IP:8000"
         echo "  - http://$(hostname):8000"
         echo ""
-        echo "To access the API from your laptop:"
-        echo "  curl http://$TAILSCALE_IP:8000"
+        echo "API is available through the UI proxy at:"
+        echo "  - http://$TAILSCALE_IP:8000/api/health"
         echo ""
     fi
 fi
