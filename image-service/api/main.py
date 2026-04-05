@@ -15,7 +15,58 @@ from usage import UsageTracker
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(
+    title="RenderCart API",
+    description="Product Context Image Generation Engine for RenderCart and Stockman integration.",
+    version="1.0.0"
+)
+
+# API v1 Router for Stockman integration
+from fastapi import APIRouter
+
+v1_router = APIRouter(prefix="/v1", tags=["v1"])
+
+@v1_router.post("/generate", status_code=status.HTTP_202_ACCEPTED)
+async def v1_generate(
+    request: GenerateRequest,
+    business_id: str = Depends(APIKeyAuth().verify_api_key)
+) -> dict:
+    """Generate images via API v1 with optional webhook callback."""
+    # Logic is identical for now but partitioned for versioning
+    job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
+    
+    # Store in redis
+    # Using existing redis_store from main.py context
+    from models import RedisJobStore
+    RedisJobStore().create_job(job_id, business_id, request)
+    
+    # Send to celery
+    # Using existing celery from main.py context
+    celery.send_task(
+        "worker.process_job",
+        args=[job_id, request.image_url, request.prompt, request.style.value, business_id, request.num_outputs],
+        kwargs={"callback_url": request.callback_url}
+    )
+    
+    return {
+        "job_id": job_id,
+        "status": "pending",
+        "message": "Job submitted successfully. Results will be sent to callback_url if provided."
+    }
+
+@v1_router.get("/job/{job_id}")
+async def v1_get_job(
+    job_id: str,
+    business_id: str = Depends(APIKeyAuth().verify_api_key)
+) -> JobResponse:
+    """Get status of a specific generation job."""
+    from models import RedisJobStore
+    job = RedisJobStore().get_job(job_id)
+    if not job or not job_id.startswith(f"job_{business_id}_"):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+app.include_router(v1_router)
 
 # CORS middleware
 app.add_middleware(
@@ -99,7 +150,8 @@ async def generate_image(
         # Send task to Celery
         celery.send_task(
             "worker.process_job",
-            args=[job_id, request.image_url, request.prompt, request.style.value, business_id, request.num_outputs]
+            args=[job_id, request.image_url, request.prompt, request.style.value, business_id, request.num_outputs],
+            kwargs={"callback_url": request.callback_url}
         )
         
         return {"job_id": job_id}

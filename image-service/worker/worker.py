@@ -322,7 +322,7 @@ def finalize_job(job_id: str, upload_result: Dict[str, Any]):
 
 
 @celery.task(bind=True, max_retries=3, name="worker.process_job")
-def process_job(self, job_id: str, image_url: str, prompt: str, style: str, business_id: str, num_outputs: int = 1):
+def process_job(self, job_id: str, image_url: str, prompt: str, style: str, business_id: str, num_outputs: int = 1, callback_url: str = None):
     """
     Main task to process a job through the pipeline.
     
@@ -332,9 +332,8 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
         prompt: User prompt
         style: Style name
         business_id: Business ID
-        
-    Returns:
-        Final job result
+        num_outputs: Number of generated images
+        callback_url: Optional URL to send webhook results
     """
     try:
         # Apply style to prompt
@@ -345,6 +344,19 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
         generated_images = generate_images(job_id, processed_data, styled_prompt, num_outputs)
         upload_result = upload_results(job_id, generated_images, business_id)
         result = finalize_job(job_id, upload_result)
+
+        # Send webhook if callback_url is provided
+        if callback_url:
+            try:
+                print(f"Sending webhook to {callback_url}")
+                payload = {
+                    "job_id": job_id,
+                    "status": "completed",
+                    "images": upload_result
+                }
+                requests.post(callback_url, json=payload, timeout=10)
+            except Exception as e:
+                print(f"Failed to send webhook to {callback_url}: {str(e)}")
 
         try:
             if image_path and os.path.exists(image_path):
@@ -358,6 +370,23 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
         raise self.retry(exc=e, countdown=e.countdown)
     except Ignore:
         print(f"Job {job_id} ignored due to error")
+        # Notify of failure if callback is set
+        if callback_url:
+            try:
+                requests.post(callback_url, json={"job_id": job_id, "status": "failed"}, timeout=10)
+            except:
+                pass
+    except Exception as e:
+        error_msg = f"Unhandled error in worker: {str(e)}"
+        print(f"Error processing job {job_id}: {error_msg}")
+        update_job_status(job_id, "failed", error=error_msg)
+        # Notify of failure if callback is set
+        if callback_url:
+            try:
+                requests.post(callback_url, json={"job_id": job_id, "status": "failed", "error": error_msg}, timeout=10)
+            except:
+                pass
+        raise e
         raise
     except Exception as e:
         error_msg = f"Job processing failed: {str(e)}\n{traceback.format_exc()}"

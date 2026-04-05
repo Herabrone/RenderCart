@@ -19,6 +19,7 @@ class GenerateRequest(BaseModel):
     prompt: str
     style: ImageStyle
     num_outputs: int = 1
+    callback_url: Optional[str] = None
     
     def __init__(self, **data):
         super().__init__(**data)
