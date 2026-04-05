@@ -25,6 +25,14 @@ class APIKeyAuth:
     def get_api_key_hash(self, api_key: str) -> str:
         """Generate SHA-256 hash of API key"""
         return hashlib.sha256(api_key.encode()).hexdigest()
+
+    def normalize_stored_hash(self, stored_hash: str) -> str:
+        """Normalize hash formats like 'sha256:<hex>' or '<hex>' to plain hex."""
+        if not stored_hash:
+            return ""
+        if stored_hash.startswith("sha256:"):
+            return stored_hash.split(":", 1)[1]
+        return stored_hash
     
     def verify_api_key(self, api_key: str) -> str:
         """
@@ -49,7 +57,8 @@ class APIKeyAuth:
         
         # Find matching business
         for business_id, config in self.business_keys.items():
-            if config.get('api_key_hash') == api_key_hash:
+            stored_hash = self.normalize_stored_hash(config.get('api_key_hash', ''))
+            if stored_hash == api_key_hash:
                 return business_id
         
         raise HTTPException(

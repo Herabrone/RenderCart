@@ -7,7 +7,8 @@ This deployment uses a DevOps-first approach with GPU auto-scaling and Tailscale
 ## Deployment Architecture
 
 ### Core Services (Static)
-- **API**: FastAPI service on port 8000
+- **UI**: React app served by Nginx on port 8000
+- **API**: FastAPI service on internal Docker network (proxied by UI at `/api`)
 - **Redis**: Message broker and result backend
 
 ### Worker Services (Auto-Generated)
@@ -34,7 +35,7 @@ This deployment uses a DevOps-first approach with GPU auto-scaling and Tailscale
 ./generate_workers.sh
 
 # 2. Deploy with Docker Compose
-docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d --build
 ```
 
 ### Local Deployment Mode
@@ -49,8 +50,9 @@ To run the service locally on the server without Tailscale, use:
 
 This mode:
 - skips Tailscale installation and login
-- deploys the API and worker services locally
-- exposes the API on `http://localhost:8000`
+- deploys the UI, API, Redis, and worker services locally
+- exposes the UI on `http://localhost:8000`
+- exposes API endpoints through the UI proxy at `http://localhost:8000/api/*`
 
 ### Worker-Only Redeploy
 
@@ -87,16 +89,19 @@ This is the recommended approach for:
 
 2. **Deploy Services**
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d
+  docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d --build
    ```
 
-3. **Access API via Tailscale**
+3. **Access UI and API via Tailscale**
    ```bash
    # Get your Tailscale IP
    TAILSCALE_IP=$(tailscale ip -4)
    
-   # Access API
-   curl http://$TAILSCALE_IP:8000
+  # Open UI
+  # http://$TAILSCALE_IP:8000
+
+  # Access API health via UI proxy
+  curl http://$TAILSCALE_IP:8000/api/health
    ```
 
 ## GPU Detection Logic
@@ -117,9 +122,13 @@ The deployment script automatically:
 
 ### Accessing from Your Laptop
 
-After deployment, access the API from your laptop via:
+After deployment, open the UI from your laptop:
 ```bash
-curl http://<tailscale-ip>:8000
+# Browser
+http://<tailscale-ip>:8000
+
+# API health through proxy
+curl http://<tailscale-ip>:8000/api/health
 ```
 
 ## Scaling Scenarios
@@ -192,7 +201,8 @@ docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d --force
 ## Future Integration
 
 This deployment is designed for future Stockman integration:
-- API remains stable on port 8000
+- UI remains stable on port 8000
+- API remains stable behind the `/api` proxy path
 - Worker topology auto-adapts to hardware
 - Tailscale provides secure remote access
 

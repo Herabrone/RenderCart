@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import axios from 'axios';
 
-const ImageUpload = ({ onUploadSuccess }) => {
+const ImageUpload = ({ onImageUpload }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -78,13 +78,13 @@ const ImageUpload = ({ onUploadSuccess }) => {
         }
       });
 
-      onUploadSuccess(response.data.image_url);
+      onImageUpload(response.data.url);
     } catch (err) {
       setError(err.response?.data?.detail || 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
-  }, [onUploadSuccess]);
+  }, [onImageUpload]);
 
   return (
     <div className="image-upload">

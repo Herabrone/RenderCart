@@ -41,7 +41,6 @@ function App() {
           <GenerateForm
             imageUrl={uploadedImage}
             onJobCreated={handleJobCreated}
-            onImagesGenerated={handleImagesGenerated}
           />
         </div>
       )}

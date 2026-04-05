@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const JobStatus = ({ jobId, onComplete }) => {
+const JobStatus = ({ jobId, onImagesGenerated }) => {
   const [status, setStatus] = useState('pending');
   const [progress, setProgress] = useState(0);
   const [images, setImages] = useState([]);
@@ -29,7 +29,7 @@ const JobStatus = ({ jobId, onComplete }) => {
         
         if (response.data.images && response.data.images.length > 0) {
           setImages(response.data.images);
-          onComplete(response.data.images);
+          onImagesGenerated(response.data.images);
         }
       } catch (err) {
         setError(err.response?.data?.detail || 'Failed to fetch job status');
@@ -40,7 +40,7 @@ const JobStatus = ({ jobId, onComplete }) => {
     interval = setInterval(fetchStatus, 2000);
 
     return () => clearInterval(interval);
-  }, [jobId, onComplete]);
+  }, [jobId, onImagesGenerated]);
 
   return (
     <div className="job-status">
