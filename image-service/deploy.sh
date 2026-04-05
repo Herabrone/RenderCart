@@ -60,7 +60,14 @@ echo "✅ Docker Compose available"
 # Check NVIDIA runtime
 if ! docker info | grep -q "NVIDIA"; then
     echo "⚠️  NVIDIA Docker runtime not detected. Installing..."
-    docker run --rm --privileged nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi || true
+fi
+
+# Validate NVIDIA runtime by executing nvidia-smi inside an NVIDIA container.
+if ! docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi > /dev/null 2>&1; then
+    echo "❌ NVIDIA container runtime is not working."
+    echo "Install NVIDIA Container Toolkit and restart Docker, then try again."
+    echo "Guide: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+    exit 1
 fi
 
 echo "✅ NVIDIA Docker runtime available"
