@@ -13,6 +13,7 @@ import sys
 import time
 import tempfile
 import traceback
+import logging
 from io import BytesIO
 from typing import List, Dict, Any
 from datetime import datetime
@@ -28,6 +29,11 @@ from diffusers import StableDiffusionXLImg2ImgPipeline
 from rembg import remove
 
 from presets import apply_style_to_prompt, get_inference_params
+from logging_config import setup_logging
+
+# Setup structured logging
+logger = logging.getLogger(__name__)
+setup_logging()
 
 # Initialize Celery
 celery = Celery(
@@ -78,40 +84,41 @@ def check_gpu_availability():
     try:
         # Check if CUDA is available
         if not torch.cuda.is_available():
-            print("❌ CUDA not available. GPU worker cannot start.")
+            logger.error("CUDA not available. GPU worker cannot start.")
             return False
         
         # Get CUDA device
         device = torch.device("cuda")
-        print(f"✅ CUDA available: {torch.cuda.get_device_name(device)}")
+        logger.info("CUDA available", extra={"device": torch.cuda.get_device_name(device)})
         
         # Test CUDA functionality
         test_tensor = torch.randn(1, 3, 256, 256, device=device)
         result = test_tensor.sum()
-        print(f"✅ CUDA functional test passed: sum = {result.item()}")
+        logger.info("CUDA functional test passed", extra={"sum": result.item()})
         
         # Check memory
         total_mem = torch.cuda.get_device_properties(device).total_memory / 1024**3
         free_mem = torch.cuda.mem_get_info(device)[1] / 1024**3
-        print(f"✅ GPU memory: {total_mem:.2f}GB total, {free_mem:.2f}GB free")
+        logger.info("GPU memory info", extra={"total_gb": total_mem, "free_gb": free_mem})
         
         if free_mem < 2:
-            print("⚠️  Low GPU memory available. Worker may experience issues.")
+            logger.warning("Low GPU memory available. Worker may experience issues.")
         
         return True
         
     except Exception as e:
-        print(f"❌ GPU preflight check failed: {str(e)}")
+        error_msg = f"GPU preflight check failed: {str(e)}"
+        logger.error("GPU preflight check failed", extra={"error": error_msg})
         traceback.print_exc()
         return False
 
 # Run GPU preflight check on startup
 if __name__ == "__main__":
-    print("🔍 Running GPU preflight checks...")
+    logger.info("Running GPU preflight checks")
     if not check_gpu_availability():
-        print("❌ GPU preflight check failed. Exiting worker.")
+        logger.error("GPU preflight check failed. Exiting worker.")
         sys.exit(1)
-    print("✅ GPU preflight checks passed. Starting worker...")
+    logger.info("GPU preflight checks passed. Starting worker")
 
 
 def get_sdxl_pipeline():
@@ -301,14 +308,14 @@ def get_sdxl_pipeline():
     """Get or create SDXL pipeline with cache."""
     global _sdxl_pipeline
     if _sdxl_pipeline is None:
-        print("Loading SDXL pipeline...")
+        logger.info("Loading SDXL pipeline")
         _sdxl_pipeline = StableDiffusionXLImg2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
             torch_dtype=torch.float16,
             variant="fp16",
             safety_checker=None
         ).to("cuda")
-        print("SDXL pipeline loaded")
+        logger.info("SDXL pipeline loaded")
     return _sdxl_pipeline
 
 
@@ -324,6 +331,8 @@ def update_job_status(job_id: str, status: str, progress: int = None, step: str 
         result_urls: List of result URLs
         error: Error message (if any)
     """
+    logger.info("Updating job status", extra={"job_id": job_id, "status": status, "progress": progress, "step": step})
+    
     job_data = {
         "status": status,
         "updated_at": datetime.utcnow().isoformat()
@@ -363,7 +372,7 @@ def download_input_image(job_id: str, image_url: str) -> str:
     try:
         update_job_status(job_id, "processing", progress=10, step="download")
         
-        print(f"Downloading image from {image_url}")
+        logger.info("Downloading image", extra={"job_id": job_id, "image_url": image_url})
         response = requests.get(image_url, timeout=30)
         response.raise_for_status()
         
@@ -372,11 +381,12 @@ def download_input_image(job_id: str, image_url: str) -> str:
             tmp_file.write(response.content)
             tmp_path = tmp_file.name
         
-        print(f"Image downloaded to {tmp_path}")
+        logger.info("Image downloaded", extra={"job_id": job_id, "image_path": tmp_path})
         return tmp_path
         
     except requests.RequestException as e:
         error_msg = f"Failed to download image: {str(e)}"
+        logger.error("Download failed", extra={"job_id": job_id, "error": error_msg})
         update_job_status(job_id, "failed", error=error_msg)
         raise Retry(exc=e, countdown=5)
 
@@ -399,7 +409,7 @@ def preprocess_image(job_id: str, image_path: str, style: str) -> Dict[str, Any]
     try:
         update_job_status(job_id, "processing", progress=40, step="preprocess")
         
-        print(f"Preprocessing image {image_path}")
+        logger.info("Preprocessing image", extra={"job_id": job_id, "image_path": image_path})
         
         # Load image
         with open(image_path, "rb") as f:
@@ -408,7 +418,7 @@ def preprocess_image(job_id: str, image_path: str, style: str) -> Dict[str, Any]
         img = Image.open(BytesIO(img_data))
         
         # Remove background
-        print("Removing background...")
+        logger.debug("Removing background", extra={"job_id": job_id})
         img = remove(img)
         
         # Convert to RGB and resize
@@ -420,7 +430,7 @@ def preprocess_image(job_id: str, image_path: str, style: str) -> Dict[str, Any]
         img.save(output_buffer, format="PNG")
         processed_img_bytes = output_buffer.getvalue()
         
-        print(f"Image preprocessed, size: {len(processed_img_bytes)} bytes")
+        logger.info("Image preprocessed", extra={"job_id": job_id, "size": len(processed_img_bytes)})
         
         return {
             "image_bytes": processed_img_bytes,
@@ -429,6 +439,7 @@ def preprocess_image(job_id: str, image_path: str, style: str) -> Dict[str, Any]
         
     except Exception as e:
         error_msg = f"Image preprocessing failed: {str(e)}\n{traceback.format_exc()}"
+        logger.error("Preprocessing failed", extra={"job_id": job_id, "error": error_msg})
         update_job_status(job_id, "failed", error=error_msg)
         raise Ignore()
 
@@ -452,7 +463,7 @@ def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, nu
     try:
         update_job_status(job_id, "processing", progress=70, step="generate")
         
-        print(f"Generating {num_images} image(s) with prompt: {prompt[:100]}...")
+        logger.info("Generating images", extra={"job_id": job_id, "num_images": num_images, "prompt": prompt[:100]})
         
         # Get inference parameters from style
         style = processed_data["style"]
@@ -480,12 +491,13 @@ def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, nu
             output_buffer = BytesIO()
             img.save(output_buffer, format="PNG")
             result_images.append(output_buffer.getvalue())
-            print(f"Generated image {i+1}/{num_images}, size: {len(result_images[-1])} bytes")
+            logger.info("Generated image", extra={"job_id": job_id, "image_number": i+1, "size": len(result_images[-1])})
         
         return result_images
         
     except Exception as e:
         error_msg = f"Image generation failed: {str(e)}\n{traceback.format_exc()}"
+        logger.error("Generation failed", extra={"job_id": job_id, "error": error_msg})
         update_job_status(job_id, "failed", error=error_msg)
         raise Ignore()
 
@@ -508,7 +520,7 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
     try:
         update_job_status(job_id, "processing", progress=90, step="upload")
         
-        print(f"Uploading {len(generated_images)} image(s) to R2")
+        logger.info("Uploading images", extra={"job_id": job_id, "count": len(generated_images)})
         
         # In a real implementation, this would upload to R2
         # For now, we'll simulate it and return mock URLs
@@ -520,7 +532,7 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
             # Create mock URL
             mock_url = f"https://r2.example.com/{business_id}/jobs/{job_id}/image_{i+1}.png"
             r2_urls.append(mock_url)
-            print(f"Uploaded image {i+1}: {mock_url}")
+            logger.info("Image uploaded", extra={"job_id": job_id, "image_number": i+1, "url": mock_url})
         
         return {
             "r2_urls": r2_urls,
@@ -529,6 +541,7 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
         
     except Exception as e:
         error_msg = f"Upload failed: {str(e)}\n{traceback.format_exc()}"
+        logger.error("Upload failed", extra={"job_id": job_id, "error": error_msg})
         update_job_status(job_id, "failed", error=error_msg)
         raise Ignore()
 
@@ -553,12 +566,13 @@ def finalize_job(job_id: str, upload_result: Dict[str, Any]):
         }
         
         update_job_status(job_id, "completed", progress=100, step="completed", result_urls=result)
-        print(f"Job {job_id} completed successfully")
+        logger.info("Job completed", extra={"job_id": job_id, "result": result})
         
         return result
         
     except Exception as e:
         error_msg = f"Job finalization failed: {str(e)}\n{traceback.format_exc()}"
+        logger.error("Finalization failed", extra={"job_id": job_id, "error": error_msg})
         update_job_status(job_id, "failed", error=error_msg)
         raise Ignore()
 
@@ -578,8 +592,11 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
         callback_url: Optional URL to send webhook results
     """
     try:
+        logger.info("Starting job processing", extra={"job_id": job_id, "business_id": business_id, "num_outputs": num_outputs})
+        
         # Apply style to prompt
         styled_prompt = apply_style_to_prompt(prompt, style)
+        logger.debug("Applied style to prompt", extra={"job_id": job_id, "style": style})
 
         image_path = download_input_image(job_id, image_url)
         processed_data = preprocess_image(job_id, image_path, style)
@@ -590,15 +607,16 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
         # Send webhook if callback_url is provided
         if callback_url:
             try:
-                print(f"Sending webhook to {callback_url}")
+                logger.info("Sending webhook", extra={"job_id": job_id, "callback_url": callback_url})
                 payload = {
                     "job_id": job_id,
                     "status": "completed",
                     "images": upload_result
                 }
                 requests.post(callback_url, json=payload, timeout=10)
+                logger.info("Webhook sent successfully", extra={"job_id": job_id})
             except Exception as e:
-                print(f"Failed to send webhook to {callback_url}: {str(e)}")
+                logger.error("Failed to send webhook", extra={"job_id": job_id, "callback_url": callback_url, "error": str(e)})
 
         try:
             if image_path and os.path.exists(image_path):
@@ -606,12 +624,14 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
         except OSError:
             pass
 
+        logger.info("Job completed successfully", extra={"job_id": job_id})
         return result
-        
+
     except Retry as e:
+        logger.warning("Retrying job", extra={"job_id": job_id, "countdown": e.countdown})
         raise self.retry(exc=e, countdown=e.countdown)
     except Ignore:
-        print(f"Job {job_id} ignored due to error")
+        logger.error("Job ignored due to error", extra={"job_id": job_id})
         # Notify of failure if callback is set
         if callback_url:
             try:
@@ -620,7 +640,7 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
                 pass
     except Exception as e:
         error_msg = f"Unhandled error in worker: {str(e)}"
-        print(f"Error processing job {job_id}: {error_msg}")
+        logger.error("Error processing job", extra={"job_id": job_id, "error": error_msg})
         update_job_status(job_id, "failed", error=error_msg)
         # Notify of failure if callback is set
         if callback_url:
@@ -629,11 +649,6 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
             except:
                 pass
         raise e
-        raise
-    except Exception as e:
-        error_msg = f"Job processing failed: {str(e)}\n{traceback.format_exc()}"
-        update_job_status(job_id, "failed", error=error_msg)
-        raise Ignore()
 
 
 # Task signatures for external use

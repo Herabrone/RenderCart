@@ -1,19 +1,25 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from celery import Celery
 from celery.result import AsyncResult
 import os
 import time
 import random
+import uuid
 from dotenv import load_dotenv
 import redis
+import logging
 
 from models import GenerateRequest, JobResponse, JobStatus, RedisJobStore
 from auth import APIKeyAuth
 from storage import R2Storage
 from usage import UsageTracker
+from logging_config import setup_logging, generate_correlation_id, set_correlation_id, log_event
 
 load_dotenv()
+
+# Setup structured logging
+logger = setup_logging()
 
 app = FastAPI(
     title="RenderCart API",
@@ -34,6 +40,20 @@ async def v1_generate(
     """Generate images via API v1 with optional webhook callback."""
     # Logic is identical for now but partitioned for versioning
     job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
+    
+    # Log job queued event
+    log_event(
+        logger,
+        event_type="queued",
+        job_id=job_id,
+        status="pending",
+        message="Job queued for processing",
+        business_id=business_id,
+        image_url=request.image_url,
+        prompt=request.prompt,
+        style=request.style.value,
+        num_outputs=request.num_outputs
+    )
     
     # Store in redis
     # Using existing redis_store from main.py context
@@ -76,6 +96,45 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Middleware to generate and propagate correlation IDs
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    """Generate correlation ID and propagate through request headers."""
+    correlation_id = request.headers.get("X-Correlation-ID") or generate_correlation_id()
+    
+    # Set correlation ID in environment for this request
+    set_correlation_id(correlation_id)
+    
+    # Add to request state
+    request.state.correlation_id = correlation_id
+    
+    # Log request with correlation ID
+    log_event(
+        logger,
+        event_type="request",
+        job_id=None,
+        status="started",
+        message=f"{request.method} {request.url.path}",
+        correlation_id=correlation_id,
+        path=request.url.path,
+        method=request.method
+    )
+    
+    response = await call_next(request)
+    
+    # Log response
+    log_event(
+        logger,
+        event_type="response",
+        job_id=None,
+        status="completed",
+        message=f"{request.method} {request.url.path} - {response.status_code}",
+        correlation_id=correlation_id,
+        status_code=response.status_code
+    )
+    
+    return response
 
 # Initialize services
 redis_store = RedisJobStore()
@@ -147,6 +206,20 @@ async def generate_image(
         job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
         redis_store.create_job(job_id, business_id, request)
         
+        # Log job queued event
+        log_event(
+            logger,
+            event_type="queued",
+            job_id=job_id,
+            status="pending",
+            message="Job queued for processing",
+            business_id=business_id,
+            image_url=request.image_url,
+            prompt=request.prompt,
+            style=request.style.value,
+            num_outputs=request.num_outputs
+        )
+        
         # Send task to Celery
         celery.send_task(
             "worker.process_job",
@@ -158,6 +231,14 @@ async def generate_image(
     except HTTPException:
         raise
     except Exception as e:
+        log_event(
+            logger,
+            event_type="failed",
+            job_id=None,
+            status="error",
+            message=f"Job submission failed: {str(e)}",
+            error=str(e)
+        )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @app.get("/job/{job_id}")
