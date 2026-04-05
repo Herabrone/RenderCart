@@ -20,7 +20,8 @@ from typing import List, Dict, Any, Optional
 class GPUSpec:
     """Represents GPU specifications and capabilities."""
     
-    def __init__(self, name: str, memory_mb: int, compute_cap: str):
+    def __init__(self, index: int, name: str, memory_mb: int, compute_cap: str):
+        self.index = index
         self.name = name
         self.memory_mb = memory_mb
         self.compute_cap = compute_cap
@@ -60,13 +61,14 @@ class GPUPlanner:
                     memory_mb = int(memory_match.group(1)) if memory_match else 0
                     
                     gpu = GPUSpec(
+                        index=int(parts[0]),
                         name=parts[1],
                         memory_mb=memory_mb,
                         compute_cap=parts[3]
                     )
                     self.gpus.append(gpu)
             
-            self.gpus = sorted(self.gpus, key=lambda x: self.gpus.index(x))
+            self.gpus = sorted(self.gpus, key=lambda gpu: gpu.index)
             
         except subprocess.CalledProcessError as e:
             self._fail_fast(f"Error running nvidia-smi: {e}", 
@@ -133,6 +135,10 @@ class GPUPlanner:
                     'max_batch_size': 1,
                     'priority': 4
                 }
+
+        # Ensure a single 3060-like host can still process full generation workloads.
+        if len(self.gpus) == 1 and self.gpus[0].role == "preprocess":
+            self.gpus[0].role = "light"
     
     def generate_plan(self) -> Dict[str, Any]:
         """Generate worker plan based on GPU classification."""
@@ -148,6 +154,7 @@ class GPUPlanner:
         
         for gpu in self.gpus:
             gpu_info = {
+                'index': gpu.index,
                 'name': gpu.name,
                 'memory': f"{gpu.memory_mb}MB",
                 'compute_cap': gpu.compute_cap,
@@ -210,7 +217,7 @@ class GPUPlanner:
                     'WORKER_ROLE': 'main',
                     'MAX_RESOLUTION': gpu.settings['max_resolution'],
                     'MAX_BATCH_SIZE': str(gpu.settings['max_batch_size']),
-                    'NVIDIA_VISIBLE_DEVICES': str(i - 1),
+                    'NVIDIA_VISIBLE_DEVICES': str(gpu.index),
                     'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
                 },
                 'deploy': {
@@ -252,7 +259,7 @@ class GPUPlanner:
                     'WORKER_ROLE': 'light',
                     'MAX_RESOLUTION': gpu.settings['max_resolution'],
                     'MAX_BATCH_SIZE': str(gpu.settings['max_batch_size']),
-                    'NVIDIA_VISIBLE_DEVICES': str(i - 1),
+                    'NVIDIA_VISIBLE_DEVICES': str(gpu.index),
                     'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
                 },
                 'deploy': {
@@ -294,7 +301,7 @@ class GPUPlanner:
                     'WORKER_ROLE': 'preprocess',
                     'MAX_RESOLUTION': gpu.settings['max_resolution'],
                     'MAX_BATCH_SIZE': str(gpu.settings['max_batch_size']),
-                    'NVIDIA_VISIBLE_DEVICES': str(i - 1),
+                    'NVIDIA_VISIBLE_DEVICES': str(gpu.index),
                     'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility'
                 },
                 'deploy': {

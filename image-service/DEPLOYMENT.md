@@ -37,6 +37,28 @@ This deployment uses a DevOps-first approach with GPU auto-scaling and Tailscale
 docker compose -f docker-compose.yml -f docker-compose.workers.yml up -d
 ```
 
+### Worker-Only Redeploy
+
+To redeploy only worker containers (useful when updating worker code without restarting the API):
+
+```bash
+./deploy.sh --workers-only
+# or
+./deploy.sh -w
+```
+
+This mode:
+- Skips Tailscale setup (assumes already configured)
+- Regenerates worker configuration based on current GPU hardware
+- Forces recreation of worker containers only
+- Skips health checks (assumes API and Redis are already running)
+
+This is the recommended approach for:
+- Code updates to worker services
+- Configuration changes affecting workers
+- GPU driver updates
+- Quick rollback scenarios
+
 ### Manual Deployment Steps
 
 1. **Generate Worker Overlay**

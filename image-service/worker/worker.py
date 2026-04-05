@@ -18,8 +18,9 @@ from datetime import datetime
 
 import redis
 import requests
-from celery import Celery, chain, signature
+from celery import Celery, signature
 from celery.exceptions import Ignore, Retry
+from kombu import Queue
 from PIL import Image
 import torch
 from diffusers import StableDiffusionXLImg2ImgPipeline
@@ -31,25 +32,27 @@ from presets import apply_style_to_prompt, get_inference_params
 celery = Celery(
     "tasks",
     broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
-    backend=os.getenv("CELERY_RESULT_BACKACKEND", "redis://redis:6379/0")
+    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 )
 
 # Configure Celery queues and routing
 celery.conf.task_queues = (
-    celery.queue("download"),
-    celery.queue("preprocess"),
-    celery.queue("generate"),
-    celery.queue("upload"),
-    celery.queue("status")
+    Queue("download"),
+    Queue("preprocess"),
+    Queue("generate"),
+    Queue("upload"),
+    Queue("status")
 )
 
 celery.conf.task_routes = {
+    "worker.process_job": {"queue": "generate"},
     "tasks.download_input_image": {"queue": "download"},
     "tasks.preprocess_image": {"queue": "preprocess"},
     "tasks.generate_images": {"queue": "generate"},
     "tasks.upload_results": {"queue": "upload"},
     "tasks.update_job_status": {"queue": "status"}
 }
+celery.conf.task_default_queue = "generate"
 
 # Redis connection for job tracking
 redis_conn = redis.Redis(
@@ -318,8 +321,8 @@ def finalize_job(job_id: str, upload_result: Dict[str, Any]):
         raise Ignore()
 
 
-@celery.task(bind=True, max_retries=3)
-def process_job(self, job_id: str, image_url: str, prompt: str, style: str, business_id: str):
+@celery.task(bind=True, max_retries=3, name="worker.process_job")
+def process_job(self, job_id: str, image_url: str, prompt: str, style: str, business_id: str, num_outputs: int = 1):
     """
     Main task to process a job through the pipeline.
     
@@ -336,19 +339,19 @@ def process_job(self, job_id: str, image_url: str, prompt: str, style: str, busi
     try:
         # Apply style to prompt
         styled_prompt = apply_style_to_prompt(prompt, style)
-        
-        # Build the task chain
-        task_chain = chain(
-            download_input_image.s(job_id, image_url),
-            preprocess_image.s(job_id, style),
-            generate_images.s(job_id, styled_prompt),
-            upload_results.s(job_id, business_id),
-            finalize_job.s(job_id)
-        )
-        
-        # Execute the chain
-        result = task_chain()
-        
+
+        image_path = download_input_image(job_id, image_url)
+        processed_data = preprocess_image(job_id, image_path, style)
+        generated_images = generate_images(job_id, processed_data, styled_prompt, num_outputs)
+        upload_result = upload_results(job_id, generated_images, business_id)
+        result = finalize_job(job_id, upload_result)
+
+        try:
+            if image_path and os.path.exists(image_path):
+                os.remove(image_path)
+        except OSError:
+            pass
+
         return result
         
     except Retry as e:

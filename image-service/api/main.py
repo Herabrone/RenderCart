@@ -97,9 +97,9 @@ async def generate_image(
         redis_store.create_job(job_id, business_id, request)
         
         # Send task to Celery
-        task = celery.send_task(
-            "worker.generate_image",
-            args=[job_id, request.image_url, request.prompt, request.style.value, request.num_outputs]
+        celery.send_task(
+            "worker.process_job",
+            args=[job_id, request.image_url, request.prompt, request.style.value, business_id, request.num_outputs]
         )
         
         return {"job_id": job_id}
