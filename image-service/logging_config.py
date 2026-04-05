@@ -152,11 +152,15 @@ def log_event(
         'event_type': event_type,
         'job_id': job_id,
         'status': status,
-        'message': message,
+        'event_message': message,
         **extra_fields
     }
     
-    # Remove None values
-    log_data = {k: v for k, v in log_data.items() if v is not None}
+    # Remove None values and reserved LogRecord keys
+    reserved_keys = {'name', 'msg', 'args', 'levelname', 'levelno', 'pathname',
+                     'filename', 'module', 'exc_info', 'exc_text', 'stack_info',
+                     'lineno', 'funcName', 'created', 'msecs', 'relativeCreated',
+                     'thread', 'threadName', 'process', 'processName', 'message'}
+    log_data = {k: v for k, v in log_data.items() if v is not None and k not in reserved_keys}
     
-    logger.info('', extra=log_data)
+    logger.info(message or '', extra=log_data)
