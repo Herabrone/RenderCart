@@ -40,6 +40,9 @@ class JobResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     output_urls: Optional[List[str]] = None
+    result_urls: Optional[List[str]] = None
+    progress: Optional[int] = None
+    step: Optional[str] = None
     error: Optional[str] = None
 
 class RedisJobStore:
@@ -66,6 +69,9 @@ class RedisJobStore:
             'style': request.style.value,
             'num_outputs': str(request.num_outputs),
             'output_urls': '',
+            'result_urls': '',
+            'progress': '0',
+            'step': '',
             'error': ''
         })
     
@@ -77,16 +83,31 @@ class RedisJobStore:
         if not data:
             return None
         
+        # Build output_urls for backward compatibility
+        output_urls = None
+        if data.get('output_urls'):
+            output_urls = [url for url in data['output_urls'].split(',') if url]
+        
+        # Build result_urls from new field or fallback to output_urls
+        result_urls = None
+        if data.get('result_urls'):
+            result_urls = [url for url in data['result_urls'].split(',') if url]
+        elif output_urls:
+            result_urls = output_urls
+        
         return JobResponse(
             job_id=job_id,
             status=JobStatus(data['status']),
             created_at=datetime.fromisoformat(data['created_at']),
             updated_at=datetime.fromisoformat(data['updated_at']),
-            output_urls=[url for url in data['output_urls'].split(',') if url] if data['output_urls'] else None,
+            output_urls=output_urls,
+            result_urls=result_urls,
+            progress=int(data['progress']) if data.get('progress') else None,
+            step=data['step'] if data.get('step') else None,
             error=data['error'] if data['error'] else None
         )
     
-    def update_job_status(self, job_id: str, status: JobStatus, output_urls: Optional[List[str]] = None, error: Optional[str] = None) -> None:
+    def update_job_status(self, job_id: str, status: JobStatus, output_urls: Optional[List[str]] = None, result_urls: Optional[List[str]] = None, progress: Optional[int] = None, step: Optional[str] = None, error: Optional[str] = None) -> None:
         """Update job status and metadata"""
         key = f"job:{job_id}"
         update_data = {
@@ -96,6 +117,15 @@ class RedisJobStore:
         
         if output_urls is not None:
             update_data['output_urls'] = ','.join(output_urls)
+        
+        if result_urls is not None:
+            update_data['result_urls'] = ','.join(result_urls)
+        
+        if progress is not None:
+            update_data['progress'] = str(progress)
+        
+        if step is not None:
+            update_data['step'] = step
         
         if error is not None:
             update_data['error'] = error

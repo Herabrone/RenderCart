@@ -312,26 +312,36 @@ def get_sdxl_pipeline():
     return _sdxl_pipeline
 
 
-def update_job_status(job_id: str, status: str, error: str = None, result: Dict[str, Any] = None):
+def update_job_status(job_id: str, status: str, progress: int = None, step: str = None, result_urls: List[str] = None, error: str = None):
     """
-    Update job status in Redis.
+    Update job status in Redis with consistent fields.
     
     Args:
         job_id: Job ID
         status: Job status (pending, processing, completed, failed)
+        progress: Progress percentage (0-100)
+        step: Current processing step (download, preprocess, generate, upload)
+        result_urls: List of result URLs
         error: Error message (if any)
-        result: Result data (if completed)
     """
     job_data = {
         "status": status,
         "updated_at": datetime.utcnow().isoformat()
     }
     
-    if error:
-        job_data["error"] = error
+    if progress is not None:
+        job_data["progress"] = str(progress)
     
-    if result:
-        job_data["result"] = result
+    if step is not None:
+        job_data["step"] = step
+    
+    if result_urls is not None:
+        job_data["result_urls"] = ",".join(result_urls)
+        # Maintain backward compatibility with output_urls
+        job_data["output_urls"] = ",".join(result_urls)
+    
+    if error is not None:
+        job_data["error"] = error
     
     redis_conn.hset(f"job:{job_id}", mapping=job_data)
 
@@ -351,7 +361,7 @@ def download_input_image(job_id: str, image_url: str) -> str:
         Retry: If download fails (retries 3 times)
     """
     try:
-        update_job_status(job_id, "processing", result={"step": "download"})
+        update_job_status(job_id, "processing", progress=10, step="download")
         
         print(f"Downloading image from {image_url}")
         response = requests.get(image_url, timeout=30)
@@ -387,7 +397,7 @@ def preprocess_image(job_id: str, image_path: str, style: str) -> Dict[str, Any]
         Ignore: If image processing fails
     """
     try:
-        update_job_status(job_id, "processing", result={"step": "preprocess"})
+        update_job_status(job_id, "processing", progress=40, step="preprocess")
         
         print(f"Preprocessing image {image_path}")
         
@@ -440,7 +450,7 @@ def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, nu
         Ignore: If generation fails
     """
     try:
-        update_job_status(job_id, "processing", result={"step": "generate"})
+        update_job_status(job_id, "processing", progress=70, step="generate")
         
         print(f"Generating {num_images} image(s) with prompt: {prompt[:100]}...")
         
@@ -496,7 +506,7 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
         Ignore: If upload fails
     """
     try:
-        update_job_status(job_id, "processing", result={"step": "upload"})
+        update_job_status(job_id, "processing", progress=90, step="upload")
         
         print(f"Uploading {len(generated_images)} image(s) to R2")
         
@@ -542,7 +552,7 @@ def finalize_job(job_id: str, upload_result: Dict[str, Any]):
             "completed_at": datetime.utcnow().isoformat()
         }
         
-        update_job_status(job_id, "completed", result=result)
+        update_job_status(job_id, "completed", progress=100, step="completed", result_urls=result)
         print(f"Job {job_id} completed successfully")
         
         return result

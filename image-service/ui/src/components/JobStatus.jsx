@@ -15,11 +15,13 @@ const JobStatus = ({ jobId, onImagesGenerated }) => {
         const response = await axios.get(`/api/job/${jobId}`);
 
         setStatus(response.data.status);
-        setProgress(response.data.progress || 0);
+        setProgress(response.data.progress || response.data.progress || 0);
         
-        if (response.data.images && response.data.images.length > 0) {
-          setImages(response.data.images);
-          onImagesGenerated(response.data.images);
+        // Use result_urls if available, otherwise fall back to output_urls
+        const images = response.data.result_urls || response.data.output_urls || [];
+        if (images && images.length > 0) {
+          setImages(images);
+          onImagesGenerated(images);
         }
       } catch (err) {
         setError(err.response?.data?.detail || 'Failed to fetch job status');
@@ -48,7 +50,11 @@ const JobStatus = ({ jobId, onImagesGenerated }) => {
             />
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-dim)', textAlign: 'right' }}>
-            {status === 'processing' ? `${progress}% complete` : 'Initializing...'}
+            {status === 'processing' ?
+              response.data.step ?
+                `${progress}% complete - ${response.data.step}` :
+                `${progress}% complete` :
+              'Initializing...'}
           </div>
         </div>
       )}
