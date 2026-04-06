@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { useCallback, useEffect, useState } from 'react';
+
 import { outputFormatOptions } from '../constants/businessOptions';
+import { apiClient, downloadWithAuth } from '../lib/apiClient';
 
 const statusOptions = [
   { value: '', label: 'All statuses' },
@@ -10,115 +11,99 @@ const statusOptions = [
   { value: 'failed', label: 'Failed' },
 ];
 
+const emptyFilters = {
+  search: '',
+  outputFormat: '',
+  status: '',
+  startDate: '',
+  endDate: '',
+};
+
 const JobHistory = () => {
   const [mode, setMode] = useState('jobs');
   const [jobs, setJobs] = useState([]);
   const [batches, setBatches] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
   const [selectedBatch, setSelectedBatch] = useState(null);
-  const [search, setSearch] = useState('');
-  const [outputFormat, setOutputFormat] = useState('');
-  const [status, setStatus] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [filters, setFilters] = useState(emptyFilters);
+  const [submittedFilters, setSubmittedFilters] = useState(emptyFilters);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
   const [downloading, setDownloading] = useState(false);
 
-  const fetchJobs = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchJobs = useCallback(async (activeFilters) => {
+    const response = await apiClient.get('/jobs', {
+      params: {
+        search: activeFilters.search || undefined,
+        output_format: activeFilters.outputFormat || undefined,
+        status: activeFilters.status || undefined,
+        start_date: activeFilters.startDate || undefined,
+        end_date: activeFilters.endDate || undefined,
+      },
+    });
+    setJobs(response.data.jobs || []);
+  }, []);
 
-    try {
-      const apiKey = localStorage.getItem('apiKey');
-      if (!apiKey) {
-        setError('Please enter your API key in the header');
-        setLoading(false);
-        return;
+  const fetchBatches = useCallback(async (activeFilters) => {
+    const response = await apiClient.get('/batches', {
+      params: {
+        search: activeFilters.search || undefined,
+        output_format: activeFilters.outputFormat || undefined,
+        status: activeFilters.status || undefined,
+        start_date: activeFilters.startDate || undefined,
+        end_date: activeFilters.endDate || undefined,
+      },
+    });
+    setBatches(response.data.batches || []);
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (mode === 'jobs') {
+          await fetchJobs(submittedFilters);
+        } else {
+          await fetchBatches(submittedFilters);
+        }
+      } catch (requestError) {
+        if (isMounted) {
+          setError(requestError.response?.data?.detail || `Failed to load ${mode} history`);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
+    };
 
-      const response = await axios.get('/api/jobs', {
-        params: {
-          search: search || undefined,
-          output_format: outputFormat || undefined,
-          status: status || undefined,
-          start_date: startDate || undefined,
-          end_date: endDate || undefined,
-        },
-        headers: {
-          'X-API-Key': apiKey,
-        },
-      });
-
-      setJobs(response.data.jobs || []);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load job history');
-    } finally {
-      setLoading(false);
-    }
-  }, [search, outputFormat, status, startDate, endDate]);
-
-  const fetchBatches = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const apiKey = localStorage.getItem('apiKey');
-      if (!apiKey) {
-        setError('Please enter your API key in the header');
-        setLoading(false);
-        return;
-      }
-
-      const response = await axios.get('/api/batches', {
-        params: {
-          search: search || undefined,
-          output_format: outputFormat || undefined,
-          status: status || undefined,
-          start_date: startDate || undefined,
-          end_date: endDate || undefined,
-        },
-        headers: {
-          'X-API-Key': apiKey,
-        },
-      });
-
-      setBatches(response.data.batches || []);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load batch history');
-    } finally {
-      setLoading(false);
-    }
-  }, [search, outputFormat, status, startDate, endDate]);
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, [mode, submittedFilters, fetchJobs, fetchBatches]);
 
   const fetchJobDetails = async (jobId) => {
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      const response = await axios.get(`/api/jobs/${jobId}`, {
-        headers: {
-          'X-API-Key': apiKey,
-        },
-      });
+      const response = await apiClient.get(`/jobs/${jobId}`);
       setSelectedBatch(null);
       setSelectedJob(response.data);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load job details');
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || 'Failed to load job details');
     }
   };
 
   const fetchBatchDetails = async (batchId) => {
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      const response = await axios.get(`/api/batch/${batchId}`, {
-        headers: {
-          'X-API-Key': apiKey,
-        },
-      });
+      const response = await apiClient.get(`/batch/${batchId}`);
       setSelectedJob(null);
       setSelectedBatch(response.data);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load batch details');
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || 'Failed to load batch details');
     }
   };
 
@@ -126,12 +111,7 @@ const JobHistory = () => {
     setDownloading(true);
     setDownloadError(null);
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      const response = await fetch(`/api/batch/${batchId}/download`, {
-        headers: {
-          ...(apiKey && { 'X-API-Key': apiKey }),
-        },
-      });
+      const response = await downloadWithAuth(`/batch/${batchId}/download`);
       if (!response.ok) {
         const detail = await response.text();
         throw new Error(detail || 'Download failed');
@@ -148,54 +128,51 @@ const JobHistory = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      setDownloadError(err.message || 'Download failed');
+    } catch (requestError) {
+      setDownloadError(requestError.message || 'Download failed');
     } finally {
       setDownloading(false);
     }
   };
 
-  useEffect(() => {
-    fetchJobs();
-    fetchBatches();
-  }, [fetchJobs, fetchBatches]);
+  const handleFilterChange = (field, value) => {
+    setFilters((current) => ({ ...current, [field]: value }));
+  };
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    fetchJobs();
-    fetchBatches();
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    setSubmittedFilters(filters);
   };
 
   const clearFilters = () => {
-    setSearch('');
-    setOutputFormat('');
-    setStatus('');
-    setStartDate('');
-    setEndDate('');
+    setFilters(emptyFilters);
+    setSubmittedFilters(emptyFilters);
     setError(null);
-    fetchJobs();
-    fetchBatches();
   };
 
   return (
     <div className="job-history-container">
       <div className="card">
-        <div className="card-title">🗂️ History</div>
+        <div className="card-title">History</div>
 
         <form onSubmit={handleSearchSubmit} className="filter-row">
           <div className="form-group">
             <label htmlFor="search">Search</label>
             <input
               id="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={filters.search}
+              onChange={(event) => handleFilterChange('search', event.target.value)}
               placeholder="Search by prompt, brand style, or category"
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="outputFormat">Output format</label>
-            <select id="outputFormat" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)}>
+            <select
+              id="outputFormat"
+              value={filters.outputFormat}
+              onChange={(event) => handleFilterChange('outputFormat', event.target.value)}
+            >
               <option value="">All formats</option>
               {outputFormatOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
@@ -205,7 +182,7 @@ const JobHistory = () => {
 
           <div className="form-group">
             <label htmlFor="status">Status</label>
-            <select id="status" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <select id="status" value={filters.status} onChange={(event) => handleFilterChange('status', event.target.value)}>
               {statusOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
@@ -214,12 +191,12 @@ const JobHistory = () => {
 
           <div className="form-group">
             <label htmlFor="startDate">From</label>
-            <input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <input id="startDate" type="date" value={filters.startDate} onChange={(event) => handleFilterChange('startDate', event.target.value)} />
           </div>
 
           <div className="form-group">
             <label htmlFor="endDate">To</label>
-            <input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <input id="endDate" type="date" value={filters.endDate} onChange={(event) => handleFilterChange('endDate', event.target.value)} />
           </div>
 
           <div className="filter-actions">
@@ -231,7 +208,7 @@ const JobHistory = () => {
         {loading && (
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <div className="spinner"></div>
-            <p style={{ marginTop: '16px', color: 'var(--text-dim)' }}>Loading job history...</p>
+            <p style={{ marginTop: '16px', color: 'var(--text-dim)' }}>Loading {mode} history...</p>
           </div>
         )}
 
@@ -243,14 +220,20 @@ const JobHistory = () => {
               <button
                 type="button"
                 className={`secondary-button ${mode === 'jobs' ? 'active' : ''}`}
-                onClick={() => { setMode('jobs'); setSelectedBatch(null); }}
+                onClick={() => {
+                  setMode('jobs');
+                  setSelectedBatch(null);
+                }}
               >
                 Jobs
               </button>
               <button
                 type="button"
                 className={`secondary-button ${mode === 'batches' ? 'active' : ''}`}
-                onClick={() => { setMode('batches'); setSelectedJob(null); }}
+                onClick={() => {
+                  setMode('batches');
+                  setSelectedJob(null);
+                }}
               >
                 Batches
               </button>
@@ -306,7 +289,7 @@ const JobHistory = () => {
                 <div className="detail-row"><strong>Use case:</strong> {selectedBatch.use_case}</div>
                 <div className="detail-row"><strong>Product category:</strong> {selectedBatch.product_category}</div>
                 <div className="detail-row"><strong>Brand style:</strong> {selectedBatch.brand_style}</div>
-                {selectedBatch.created_at && (
+                {selectedBatch.updated_at && (
                   <div className="detail-row"><strong>Updated:</strong> {new Date(selectedBatch.updated_at).toLocaleString()}</div>
                 )}
                 <div className="detail-row"><strong>Metadata:</strong> <pre className="metadata-block">{JSON.stringify(selectedBatch.metadata || {}, null, 2)}</pre></div>
@@ -318,7 +301,7 @@ const JobHistory = () => {
                   disabled={downloading}
                   style={{ marginBottom: '16px' }}
                 >
-                  {downloading ? 'Downloading batch…' : 'Download batch ZIP'}
+                  {downloading ? 'Downloading batch...' : 'Download batch ZIP'}
                 </button>
                 {downloadError && <div className="error-message" style={{ marginBottom: '16px' }}>{downloadError}</div>}
 
@@ -401,7 +384,7 @@ const JobHistory = () => {
               </>
             ) : (
               <div className="empty-state">
-                <p>Select a job from the list to view its details.</p>
+                <p>Select a {mode === 'jobs' ? 'job' : 'batch'} from the list to view its details.</p>
               </div>
             )}
           </div>

@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
-import axios from 'axios';
+import { useCallback, useEffect, useState } from 'react';
+
+import { apiClient, downloadWithAuth } from '../lib/apiClient';
 
 const BatchStatus = ({ batchId, onStatusChange }) => {
   const [status, setStatus] = useState('pending');
@@ -13,13 +14,7 @@ const BatchStatus = ({ batchId, onStatusChange }) => {
 
   const fetchBatch = useCallback(async () => {
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      const response = await axios.get(`/api/batch/${batchId}`, {
-        headers: {
-          ...(apiKey && { 'X-API-Key': apiKey }),
-        },
-      });
-
+      const response = await apiClient.get(`/batch/${batchId}`);
       setStatus(response.data.status || 'pending');
       setProgress(response.data.progress || 0);
       setItems(response.data.items || []);
@@ -31,67 +26,51 @@ const BatchStatus = ({ batchId, onStatusChange }) => {
       }
 
       return response.data;
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Unable to load batch status.');
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || 'Unable to load batch status.');
       return null;
     }
   }, [batchId, onStatusChange]);
 
   useEffect(() => {
-    let interval;
+    let intervalId;
 
     const refresh = async () => {
       const result = await fetchBatch();
       if (result && (result.status === 'completed' || result.status === 'failed')) {
-        clearInterval(interval);
+        clearInterval(intervalId);
       }
     };
 
     refresh();
-    interval = setInterval(refresh, 2000);
+    intervalId = setInterval(refresh, 2000);
 
-    return () => clearInterval(interval);
-  }, [batchId, fetchBatch]);
+    return () => clearInterval(intervalId);
+  }, [fetchBatch]);
 
   const handleRetryFailed = async () => {
     setRetrying(true);
     setRetryError(null);
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      await axios.post(
-        `/api/batch/${batchId}/retry-failed`,
-        { keep_item_labels: true },
-        {
-          headers: {
-            ...(apiKey && { 'X-API-Key': apiKey }),
-          },
-        }
-      );
+      await apiClient.post(`/batch/${batchId}/retry-failed`, { keep_item_labels: true });
       await fetchBatch();
-    } catch (err) {
-      setRetryError(err.response?.data?.detail || 'Retry failed.');
+    } catch (requestError) {
+      setRetryError(requestError.response?.data?.detail || 'Retry failed.');
     } finally {
       setRetrying(false);
     }
   };
 
-  const failedItemsCount = items.filter((item) => item.status === 'failed').length;
-  const hasDownloadableAssets = items.some((item) => item.output_urls && item.output_urls.length > 0);
-
   const handleDownloadBatch = async () => {
     setDownloading(true);
     setDownloadError(null);
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      const response = await fetch(`/api/batch/${batchId}/download`, {
-        headers: {
-          ...(apiKey && { 'X-API-Key': apiKey }),
-        },
-      });
+      const response = await downloadWithAuth(`/batch/${batchId}/download`);
       if (!response.ok) {
         const detail = await response.text();
         throw new Error(detail || 'Download failed.');
       }
+
       const blob = await response.blob();
       const contentDisposition = response.headers.get('content-disposition');
       const fileNameMatch = contentDisposition && contentDisposition.match(/filename="?(.+?)"?/);
@@ -104,12 +83,15 @@ const BatchStatus = ({ batchId, onStatusChange }) => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      setDownloadError(err.message || 'Download failed.');
+    } catch (requestError) {
+      setDownloadError(requestError.message || 'Download failed.');
     } finally {
       setDownloading(false);
     }
   };
+
+  const failedItemsCount = items.filter((item) => item.status === 'failed').length;
+  const hasDownloadableAssets = items.some((item) => item.output_urls && item.output_urls.length > 0);
 
   return (
     <div className="batch-status">
@@ -130,13 +112,8 @@ const BatchStatus = ({ batchId, onStatusChange }) => {
 
       {failedItemsCount > 0 && (
         <div className="retry-panel" style={{ marginTop: '16px' }}>
-          <button
-            type="button"
-            className="generate-button"
-            onClick={handleRetryFailed}
-            disabled={retrying}
-          >
-            {retrying ? 'Retrying failed items…' : `Retry ${failedItemsCount} failed item${failedItemsCount === 1 ? '' : 's'}`}
+          <button type="button" className="generate-button" onClick={handleRetryFailed} disabled={retrying}>
+            {retrying ? 'Retrying failed items...' : `Retry ${failedItemsCount} failed item${failedItemsCount === 1 ? '' : 's'}`}
           </button>
           {retryError && <div className="error-message" style={{ marginTop: '10px' }}>{retryError}</div>}
         </div>
@@ -144,13 +121,8 @@ const BatchStatus = ({ batchId, onStatusChange }) => {
 
       {hasDownloadableAssets && (
         <div className="download-panel" style={{ marginTop: '16px' }}>
-          <button
-            type="button"
-            className="generate-button"
-            onClick={handleDownloadBatch}
-            disabled={downloading}
-          >
-            {downloading ? 'Downloading batch…' : 'Download batch ZIP'}
+          <button type="button" className="generate-button" onClick={handleDownloadBatch} disabled={downloading}>
+            {downloading ? 'Downloading batch...' : 'Download batch ZIP'}
           </button>
           {downloadError && <div className="error-message" style={{ marginTop: '10px' }}>{downloadError}</div>}
         </div>

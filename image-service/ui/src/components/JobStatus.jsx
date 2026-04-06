@@ -1,75 +1,56 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { useEffect, useState } from 'react';
 
-const JobStatus = ({ jobId, onImagesGenerated }) => {
+import { apiClient } from '../lib/apiClient';
+
+const JobStatus = ({ jobId, onImagesGenerated, onStatusChange }) => {
   const [status, setStatus] = useState('pending');
   const [progress, setProgress] = useState(0);
   const [step, setStep] = useState('');
   const [error, setError] = useState(null);
-  
+
   useEffect(() => {
-    let interval;
-    
+    let intervalId;
+
+    const handleResponse = (data) => {
+      setStatus(data.status);
+      setProgress(data.progress || 0);
+      setStep(data.step || '');
+      setError(null);
+
+      if (onStatusChange) {
+        onStatusChange(data);
+      }
+
+      const images = data.result_urls || data.output_urls || [];
+      if (images.length > 0 && onImagesGenerated) {
+        onImagesGenerated(images);
+      }
+
+      if (data.status === 'failed' || data.status === 'completed') {
+        clearInterval(intervalId);
+      }
+    };
+
     const fetchStatus = async () => {
       try {
-        const apiKey = localStorage.getItem('apiKey');
-        // Check both /api/job and /v1/job to support the API layout
-        const response = await axios.get(`/api/v1/job/${jobId}`, {
-          headers: {
-            ...(apiKey && { 'X-API-Key': apiKey })
-          }
-        });
-
-        setStatus(response.data.status);
-        setProgress(response.data.progress || 0);
-        setStep(response.data.step || '');
-        
-        // Notify parent of updated job status for external tracking
-        if (onImagesGenerated) {
-           const images = response.data.result_urls || response.data.output_urls || [];
-           if (images.length > 0) {
-             onImagesGenerated(images);
-           }
-        }
-        
-        if (response.data.status === 'failed' || response.data.status === 'completed') {
-           clearInterval(interval);
-        }
-      } catch (err) {
-        // Fallback to older /api/ route if v1 isn't directly exposed
+        const response = await apiClient.get(`/v1/job/${jobId}`);
+        handleResponse(response.data);
+      } catch {
         try {
-          const apiKey = localStorage.getItem('apiKey');
-          const response = await axios.get(`/api/job/${jobId}`, {
-            headers: {
-              ...(apiKey && { 'X-API-Key': apiKey })
-            }
-          });
-  
-          setStatus(response.data.status);
-          setProgress(response.data.progress || 0);
-          setStep(response.data.step || '');
-          
-          if (onImagesGenerated) {
-             const images = response.data.result_urls || response.data.output_urls || [];
-             if (images.length > 0) {
-               onImagesGenerated(images);
-             }
-          }
-          if (response.data.status === 'failed' || response.data.status === 'completed') {
-             clearInterval(interval);
-          }
-        } catch (innerErr) {
-          setError(innerErr.response?.data?.detail || 'Failed to fetch job status');
-          clearInterval(interval);
+          const response = await apiClient.get(`/job/${jobId}`);
+          handleResponse(response.data);
+        } catch (innerError) {
+          setError(innerError.response?.data?.detail || 'Failed to fetch job status');
+          clearInterval(intervalId);
         }
       }
     };
 
     fetchStatus();
-    interval = setInterval(fetchStatus, 2000);
+    intervalId = setInterval(fetchStatus, 2000);
 
-    return () => clearInterval(interval);
-  }, [jobId, onImagesGenerated]);
+    return () => clearInterval(intervalId);
+  }, [jobId, onImagesGenerated, onStatusChange]);
 
   return (
     <div className="job-status">
@@ -77,27 +58,23 @@ const JobStatus = ({ jobId, onImagesGenerated }) => {
         <span className="status-label" style={{ fontSize: '14px', color: 'var(--text-dim)' }}>Status:</span>
         <span className={`status-badge status-${status}`}>{status}</span>
       </div>
-      
+
       {(status === 'processing' || status === 'pending') && (
         <div className="progress-container">
           <div className="progress-track">
-            <div
-              className="progress-fill"
-              style={{ width: `${progress || 5}%` }}
-            />
+            <div className="progress-fill" style={{ width: `${progress || 5}%` }} />
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-dim)', textAlign: 'right' }}>
-            {status === 'processing' ?
-              step ?
-                `${progress}% complete - ${step}` :
-                `${progress}% complete` :
-              'Initializing...'}
+            {status === 'processing'
+              ? step
+                ? `${progress}% complete - ${step}`
+                : `${progress}% complete`
+              : 'Initializing...'}
           </div>
         </div>
       )}
-      
+
       {status === 'failed' && <div className="error-message">Generation failed. Please try again.</div>}
-      
       {error && <div className="error-message">{error}</div>}
     </div>
   );

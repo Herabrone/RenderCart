@@ -1,113 +1,98 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { useCallback, useEffect, useState } from 'react';
+
 import { outputFormatOptions } from '../constants/businessOptions';
+import { apiClient } from '../lib/apiClient';
 
 const assetTypeOptions = [
   { value: '', label: 'All asset types' },
   { value: 'generated_output', label: 'Generated outputs' },
 ];
 
+const emptyFilters = {
+  search: '',
+  assetType: '',
+  outputFormat: '',
+  startDate: '',
+  endDate: '',
+};
+
 const Gallery = () => {
   const [assets, setAssets] = useState([]);
+  const [filters, setFilters] = useState(emptyFilters);
+  const [submittedFilters, setSubmittedFilters] = useState(emptyFilters);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState('');
-  const [assetType, setAssetType] = useState('');
-  const [outputFormat, setOutputFormat] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
 
-  const fetchAssets = async () => {
+  const fetchAssets = useCallback(async (activeFilters) => {
     setLoading(true);
     setError(null);
 
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      if (!apiKey) {
-        setError('Please enter your API key in the header');
-        setLoading(false);
-        return;
-      }
-
-      const response = await axios.get('/api/assets', {
+      const response = await apiClient.get('/assets', {
         params: {
-          search: search || undefined,
-          asset_type: assetType || undefined,
-          output_format: outputFormat || undefined,
-          start_date: startDate || undefined,
-          end_date: endDate || undefined,
-        },
-        headers: {
-          'X-API-Key': apiKey,
+          search: activeFilters.search || undefined,
+          asset_type: activeFilters.assetType || undefined,
+          output_format: activeFilters.outputFormat || undefined,
+          start_date: activeFilters.startDate || undefined,
+          end_date: activeFilters.endDate || undefined,
         },
       });
 
       setAssets(response.data.assets || []);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to fetch gallery assets');
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || 'Failed to fetch gallery assets');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchAssets();
-  }, []);
+    fetchAssets(submittedFilters);
+  }, [fetchAssets, submittedFilters]);
 
   const handleDelete = async (assetId) => {
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      if (!apiKey) {
-        setError('Please enter your API key in the header');
-        return;
-      }
-
-      await axios.delete(`/api/assets/${assetId}`, {
-        headers: {
-          'X-API-Key': apiKey,
-        },
-      });
-
-      setAssets((prev) => prev.filter((asset) => asset.id !== assetId));
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to delete asset');
+      await apiClient.delete(`/assets/${assetId}`);
+      setAssets((previous) => previous.filter((asset) => asset.id !== assetId));
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || 'Failed to delete asset');
     }
   };
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    fetchAssets();
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    setSubmittedFilters(filters);
   };
 
   const clearFilters = () => {
-    setSearch('');
-    setAssetType('');
-    setOutputFormat('');
-    setStartDate('');
-    setEndDate('');
+    setFilters(emptyFilters);
+    setSubmittedFilters(emptyFilters);
     setError(null);
-    fetchAssets();
   };
 
   return (
     <div className="gallery-container">
       <div className="card">
-        <div className="card-title">📦 Asset Gallery</div>
+        <div className="card-title">Asset Gallery</div>
 
-        <form onSubmit={handleSearchSubmit} className="filter-row">
+        <form onSubmit={handleSubmit} className="filter-row">
           <div className="form-group">
             <label htmlFor="search">Search</label>
             <input
               id="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={filters.search}
+              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
               placeholder="Search by product, tag, or asset label"
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="assetType">Asset type</label>
-            <select id="assetType" value={assetType} onChange={(e) => setAssetType(e.target.value)}>
+            <select
+              id="assetType"
+              value={filters.assetType}
+              onChange={(event) => setFilters((current) => ({ ...current, assetType: event.target.value }))}
+            >
               {assetTypeOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
@@ -116,7 +101,11 @@ const Gallery = () => {
 
           <div className="form-group">
             <label htmlFor="outputFormat">Output format</label>
-            <select id="outputFormat" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)}>
+            <select
+              id="outputFormat"
+              value={filters.outputFormat}
+              onChange={(event) => setFilters((current) => ({ ...current, outputFormat: event.target.value }))}
+            >
               <option value="">All formats</option>
               {outputFormatOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
@@ -126,12 +115,22 @@ const Gallery = () => {
 
           <div className="form-group">
             <label htmlFor="startDate">From</label>
-            <input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <input
+              id="startDate"
+              type="date"
+              value={filters.startDate}
+              onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))}
+            />
           </div>
 
           <div className="form-group">
             <label htmlFor="endDate">To</label>
-            <input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <input
+              id="endDate"
+              type="date"
+              value={filters.endDate}
+              onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))}
+            />
           </div>
 
           <div className="filter-actions">
@@ -149,7 +148,6 @@ const Gallery = () => {
 
         {!loading && assets.length === 0 && (
           <div className="empty-state">
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🖼️</div>
             <p>No assets matched your filters yet.</p>
           </div>
         )}

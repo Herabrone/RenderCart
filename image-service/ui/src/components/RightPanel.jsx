@@ -1,19 +1,4 @@
-import { useState } from 'react';
-
-const RightPanel = ({ previewImage, generatedImages, jobStatus, batchStatus, uploadedImages }) => {
-  const [exporting, setExporting] = useState(false);
-  const [exported, setExported] = useState(false);
-
-  const handleExportToStockman = async () => {
-    setExporting(true);
-    // Mock the external call to Stockman app
-    setTimeout(() => {
-      setExporting(false);
-      setExported(true);
-      setTimeout(() => setExported(false), 3000);
-    }, 1500);
-  };
-
+const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages }) => {
   return (
     <section className="right-panel">
       <div className="panel-card panel-card--preview">
@@ -44,32 +29,23 @@ const RightPanel = ({ previewImage, generatedImages, jobStatus, batchStatus, upl
       </div>
 
       <div className="panel-card panel-card--results" style={{ marginTop: '20px' }}>
-        <div className="panel-title">Asset variants & export</div>
+        <div className="panel-title">Asset variants</div>
         {generatedImages && generatedImages.length > 0 ? (
-          <div>
-            <div className="result-grid">
-              {generatedImages.map((image, index) => (
-                <div key={index} className="result-item">
-                  <img src={image} alt={`Generated ${index + 1}`} className="result-thumb" />
-                  <div className="result-actions">
-                    <button
-                      className="download-button"
-                      onClick={() => window.open(image, '_blank')}
-                    >
-                      Download HD
-                    </button>
-                    <button
-                      className="generate-button"
-                      style={{ width: '100%', marginTop: '8px' }}
-                      onClick={handleExportToStockman}
-                      disabled={exporting}
-                    >
-                      {exporting ? 'Syncing...' : exported ? '✓ Pushed to Shopify' : 'Send to Stockman'}
-                    </button>
-                  </div>
+          <div className="result-grid">
+            {generatedImages.map((image, index) => (
+              <div key={image} className="result-item">
+                <img src={image} alt={`Generated ${index + 1}`} className="result-thumb" />
+                <div className="result-actions">
+                  <button
+                    type="button"
+                    className="download-button"
+                    onClick={() => window.open(image, '_blank')}
+                  >
+                    Download
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         ) : batchStatus ? (
           <div className="empty-state">
@@ -89,9 +65,10 @@ const RightPanel = ({ previewImage, generatedImages, jobStatus, batchStatus, upl
       </div>
 
       <div className="panel-card panel-card--secondary" id="integrations" style={{ marginTop: '20px' }}>
-        <div className="panel-title">Integrations (Stockman App)</div>
+        <div className="panel-title">Integration status</div>
         <p className="panel-copy">
-          This generation pipeline will connect directly to your Shopify store via <b>Stockman</b>. Webhooks and v1 APIs are enabled so merchants can generate photos directly inside the Shopify admin panel.
+          API-key based requests, webhook callbacks, and v1 job polling are now first-class parts of the app flow.
+          Store connections should build on top of those real endpoints rather than temporary client-side mocks.
         </p>
       </div>
     </section>

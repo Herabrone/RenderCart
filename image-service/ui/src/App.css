@@ -43,6 +43,12 @@ body {
   padding: 0 1.5rem;
 }
 
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
 .logo-text {
   font-size: 1.5rem;
   font-weight: 800;
@@ -55,6 +61,43 @@ body {
 .header-nav {
   display: flex;
   gap: 1.5rem;
+}
+
+.auth-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.auth-label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.auth-input,
+input,
+textarea,
+select {
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.75rem;
+}
+
+.auth-input {
+  min-width: 220px;
+}
+
+.auth-status {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.auth-status--ready {
+  color: var(--success);
 }
 
 .nav-link {
@@ -154,6 +197,40 @@ h2 {
   cursor: not-allowed;
 }
 
+.primary-button,
+.secondary-button,
+.download-button {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, var(--accent) 0%, #ff0080 100%);
+  color: white;
+  border: none;
+}
+
+.secondary-button,
+.download-button {
+  background: transparent;
+  color: var(--text);
+}
+
+.secondary-button.active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.download-button:hover {
+  opacity: 0.9;
+}
+
 /* Forms */
 .form-group {
   margin-bottom: 1.5rem;
@@ -166,11 +243,7 @@ h2 {
 
 textarea, select {
   width: 100%;
-  background-color: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  padding: 0.75rem;
+  box-sizing: border-box;
 }
 
 /* Results */
@@ -193,4 +266,22 @@ textarea, select {
   color: var(--text-dim);
   font-size: 0.9rem;
   border-top: 1px solid var(--border);
+}
+
+@media (max-width: 960px) {
+  .header-content,
+  .header-brand {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-nav,
+  .auth-form {
+    justify-content: center;
+  }
+
+  .auth-input {
+    min-width: 0;
+    width: 100%;
+  }
 }

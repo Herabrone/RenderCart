@@ -1,27 +1,28 @@
-import { useState, useCallback } from 'react';
-import axios from 'axios';
+import { useCallback, useState } from 'react';
+
+import { apiClient } from '../lib/apiClient';
 
 const ImageUpload = ({ onImageUpload }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
-  
-  const handleDragEnter = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
+
+  const handleDragEnter = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
     setIsDragging(true);
   }, []);
 
-  const handleDragLeave = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDragLeave = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
     setIsDragging(false);
   }, []);
 
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'copy';
+  const handleDragOver = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
   }, []);
 
   const handleFiles = useCallback(async (files) => {
@@ -47,37 +48,33 @@ const ImageUpload = ({ onImageUpload }) => {
         const formData = new FormData();
         formData.append('file', file);
 
-        const apiKey = localStorage.getItem('apiKey');
-        const response = await axios.post('/api/upload', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            ...(apiKey && { 'X-API-Key': apiKey }),
-          },
+        const response = await apiClient.post('/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
 
         uploaded.push({ url: response.data.url, name: file.name });
       }
       onImageUpload(uploaded);
-    } catch (err) {
-      setError(err.message || err.response?.data?.detail || 'Upload failed. Please try again.');
+    } catch (requestError) {
+      setError(requestError.message || requestError.response?.data?.detail || 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
   }, [onImageUpload]);
 
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDrop = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
     setIsDragging(false);
-    
-    const files = e.dataTransfer.files;
+
+    const { files } = event.dataTransfer;
     if (files.length) {
       handleFiles(files);
     }
   }, [handleFiles]);
 
-  const handleFileChange = useCallback((e) => {
-    const files = e.target.files;
+  const handleFileChange = useCallback((event) => {
+    const { files } = event.target;
     if (files.length) {
       handleFiles(files);
     }

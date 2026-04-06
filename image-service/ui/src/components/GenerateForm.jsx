@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import axios from 'axios';
+
 import {
-  useCaseOptions,
-  productCategoryOptions,
-  presetOptions,
-  outputFormatOptions,
   generationModeOptions,
+  outputFormatOptions,
+  presetOptions,
+  productCategoryOptions,
+  useCaseOptions,
 } from '../constants/businessOptions';
+import { apiClient } from '../lib/apiClient';
 
 const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onStatusChange }) => {
   const [prompt, setPrompt] = useState('');
@@ -20,9 +21,9 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
 
     if (!uploadedImages || uploadedImages.length === 0) {
       setError('Upload at least one product image to start generating store visuals.');
@@ -47,64 +48,41 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
       output_format: outputFormat,
       mode,
       num_outputs: numOutputs,
-      metadata: {
-        source: 'ui',
-      },
+      metadata: { source: 'ui' },
     };
 
     try {
-      const apiKey = localStorage.getItem('apiKey');
-      let response;
-
       if (isBatch) {
-        response = await axios.post(
-          '/api/batch/generate',
-          {
-            ...payloadBase,
-            items: uploadedImages.map((item) => ({
-              image_url: item.url,
-              label: item.name,
-              input_file_name: item.name,
-            })),
-          },
-          {
-            headers: {
-              ...(apiKey && { 'X-API-Key': apiKey }),
-            },
-          }
-        );
+        const response = await apiClient.post('/batch/generate', {
+          ...payloadBase,
+          items: uploadedImages.map((item) => ({
+            image_url: item.url,
+            label: item.name,
+            input_file_name: item.name,
+          })),
+        });
 
         if (onBatchCreated) {
           onBatchCreated(response.data.batch_id);
         }
-
         if (onStatusChange) {
           onStatusChange({ status: 'pending', step: 'queued', batchId: response.data.batch_id });
         }
       } else {
-        response = await axios.post(
-          '/api/generate',
-          {
-            image_url: uploadedImages[0].url,
-            ...payloadBase,
-          },
-          {
-            headers: {
-              ...(apiKey && { 'X-API-Key': apiKey }),
-            },
-          }
-        );
+        const response = await apiClient.post('/generate', {
+          image_url: uploadedImages[0].url,
+          ...payloadBase,
+        });
 
         if (onJobCreated) {
           onJobCreated(response.data.job_id);
         }
-
         if (onStatusChange) {
           onStatusChange({ status: 'pending', step: 'queued' });
         }
       }
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Generation failed. Please try again.');
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || requestError.message || 'Generation failed. Please try again.');
     } finally {
       setGenerating(false);
     }
@@ -117,7 +95,7 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
         <textarea
           id="prompt"
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(event) => setPrompt(event.target.value)}
           placeholder="e.g. Bright lifestyle shot of a ceramic mug on a marble counter, soft natural light"
           rows={4}
         />
@@ -127,7 +105,7 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
       <div className="form-grid">
         <div className="form-group">
           <label htmlFor="useCase">Use case</label>
-          <select id="useCase" value={useCase} onChange={(e) => setUseCase(e.target.value)}>
+          <select id="useCase" value={useCase} onChange={(event) => setUseCase(event.target.value)}>
             {useCaseOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
@@ -136,7 +114,7 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
 
         <div className="form-group">
           <label htmlFor="productCategory">Product category</label>
-          <select id="productCategory" value={productCategory} onChange={(e) => setProductCategory(e.target.value)}>
+          <select id="productCategory" value={productCategory} onChange={(event) => setProductCategory(event.target.value)}>
             {productCategoryOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
@@ -149,7 +127,7 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
         <input
           id="brandStyle"
           value={brandStyle}
-          onChange={(e) => setBrandStyle(e.target.value)}
+          onChange={(event) => setBrandStyle(event.target.value)}
           placeholder="e.g. minimalist premium lifestyle"
         />
       </div>
@@ -157,7 +135,7 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
       <div className="form-grid">
         <div className="form-group">
           <label htmlFor="presetId">Export preset</label>
-          <select id="presetId" value={presetId} onChange={(e) => setPresetId(e.target.value)}>
+          <select id="presetId" value={presetId} onChange={(event) => setPresetId(event.target.value)}>
             {presetOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
@@ -166,7 +144,7 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
 
         <div className="form-group">
           <label htmlFor="outputFormat">Output format</label>
-          <select id="outputFormat" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)}>
+          <select id="outputFormat" value={outputFormat} onChange={(event) => setOutputFormat(event.target.value)}>
             {outputFormatOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
@@ -183,7 +161,7 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
           <div className="form-grid">
             <div className="form-group">
               <label htmlFor="mode">Generation mode</label>
-              <select id="mode" value={mode} onChange={(e) => setMode(e.target.value)}>
+              <select id="mode" value={mode} onChange={(event) => setMode(event.target.value)}>
                 {generationModeOptions.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
@@ -199,7 +177,7 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
                 max="4"
                 step="1"
                 value={numOutputs}
-                onChange={(e) => setNumOutputs(parseInt(e.target.value, 10))}
+                onChange={(event) => setNumOutputs(parseInt(event.target.value, 10))}
               />
               <div className="range-value">{numOutputs} assets</div>
             </div>
@@ -209,7 +187,7 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
       )}
 
       <button type="submit" className="generate-button" disabled={generating || !uploadedImages || uploadedImages.length === 0}>
-        {generating ? 'Creating images…' : uploadedImages.length > 1 ? 'Generate batch visuals' : 'Generate product visuals'}
+        {generating ? 'Creating images...' : uploadedImages.length > 1 ? 'Generate batch visuals' : 'Generate product visuals'}
       </button>
 
       {error && <div className="error-message">{error}</div>}
