@@ -19,6 +19,8 @@ def normalize_usage_endpoint(path: str) -> str:
         return "/batch/{batch_id}/download"
     if path.startswith("/batch/"):
         return "/batch/{batch_id}"
+    if path.startswith("/brand-kits/"):
+        return "/brand-kits/{brand_kit_id}"
     if path.startswith("/assets/"):
         return "/assets/{asset_id}"
     if path.startswith("/rate_limit/"):

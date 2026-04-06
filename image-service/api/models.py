@@ -18,12 +18,14 @@ class BrandKitStyleSnapshot(BaseModel):
 
     def to_brand_style(self) -> str:
         return ", ".join(
-            [
-                f"background: {self.background}",
-                f"lighting: {self.lighting}",
-                f"tone: {self.tone}",
-                f"framing: {self.framing}",
+            item
+            for item in [
+                f"background: {self.background}" if self.background else None,
+                f"lighting: {self.lighting}" if self.lighting else None,
+                f"tone: {self.tone}" if self.tone else None,
+                f"framing: {self.framing}" if self.framing else None,
             ]
+            if item
         )
 
 
