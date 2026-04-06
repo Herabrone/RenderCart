@@ -1,6 +1,7 @@
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    HF_HOME=/cache/huggingface
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
