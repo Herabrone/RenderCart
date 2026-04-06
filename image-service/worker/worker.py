@@ -460,51 +460,54 @@ def process_job(
             correlation_id=correlation_id,
         )
 
-        styled_prompt = build_prompt(
-            prompt,
-            preset_id=preset_id,
-            use_case=use_case,
-            product_category=product_category,
-            brand_style=brand_style,
-        )
-        logger.debug("Built business prompt", extra={"job_id": job_id, "prompt": styled_prompt[:120]})
-
-        output_spec = get_output_spec(output_format)
-        inference_params = get_inference_params(preset_id, mode)
-
-        image_path = download_input_image(job_id, image_url)
-        processed_data = preprocess_image(job_id, image_path, output_spec)
-        generated_images = generate_images(job_id, processed_data, styled_prompt, inference_params, num_outputs)
-        upload_result = upload_results(job_id, generated_images, business_id, output_spec.get("extension", "png"))
-        result = finalize_job(job_id, upload_result, actual_model=DEFAULT_MODEL_ID, inference_config_used=inference_params)
-
-        if callback_url:
-            try:
-                logger.info("Sending webhook", extra={"job_id": job_id, "callback_url": callback_url})
-                payload = {
-                    "job_id": job_id,
-                    "status": "completed",
-                    "images": upload_result,
-                }
-                requests.post(callback_url, json=payload, timeout=10)
-                logger.info("Webhook sent successfully", extra={"job_id": job_id})
-            except Exception as e:
-                logger.error("Failed to send webhook", extra={"job_id": job_id, "callback_url": callback_url, "error": str(e)})
-
+        image_path = None
         try:
-            if image_path and os.path.exists(image_path):
-                os.remove(image_path)
-        except OSError:
-            pass
+            styled_prompt = build_prompt(
+                prompt,
+                preset_id=preset_id,
+                use_case=use_case,
+                product_category=product_category,
+                brand_style=brand_style,
+            )
+            logger.debug("Built business prompt", extra={"job_id": job_id, "prompt": styled_prompt[:120]})
 
-        log_event(
-            LOGGER,
-            event_type="completed",
-            job_id=job_id,
-            status="completed",
-            correlation_id=correlation_id,
-        )
-        return result
+            output_spec = get_output_spec(output_format)
+            inference_params = get_inference_params(preset_id, mode)
+
+            image_path = download_input_image(job_id, image_url)
+            processed_data = preprocess_image(job_id, image_path, output_spec)
+            generated_images = generate_images(job_id, processed_data, styled_prompt, inference_params, num_outputs)
+            upload_result = upload_results(job_id, generated_images, business_id, output_spec.get("extension", "png"))
+            result = finalize_job(job_id, upload_result, actual_model=DEFAULT_MODEL_ID, inference_config_used=inference_params)
+
+            if callback_url:
+                try:
+                    logger.info("Sending webhook", extra={"job_id": job_id, "callback_url": callback_url})
+                    payload = {
+                        "job_id": job_id,
+                        "status": "completed",
+                        "images": upload_result,
+                    }
+                    requests.post(callback_url, json=payload, timeout=10)
+                    logger.info("Webhook sent successfully", extra={"job_id": job_id})
+                except Exception as e:
+                    logger.error("Failed to send webhook", extra={"job_id": job_id, "callback_url": callback_url, "error": str(e)})
+
+            log_event(
+                LOGGER,
+                event_type="completed",
+                job_id=job_id,
+                status="completed",
+                correlation_id=correlation_id,
+            )
+            return result
+            
+        finally:
+            try:
+                if image_path and os.path.exists(image_path):
+                    os.remove(image_path)
+            except OSError:
+                pass
 
     except requests.RequestException as e:
         logger.warning("Retrying job after download failure", extra={"job_id": job_id})

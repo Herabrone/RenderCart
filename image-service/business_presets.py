@@ -109,25 +109,31 @@ def get_preset(preset_id: Optional[str] = None) -> Dict[str, Any]:
 def build_prompt(
     user_prompt: str,
     preset_id: Optional[str] = None,
-    use_case: Optional[UseCase] = None,
-    product_category: Optional[ProductCategory] = None,
+    use_case: Optional[Any] = None,
+    product_category: Optional[Any] = None,
     brand_style: Optional[str] = None,
 ) -> str:
     preset = get_preset(preset_id)
     prompt_template = preset.get("prompt_template", "{user_prompt}")
+    
+    use_case_str = use_case.value if hasattr(use_case, 'value') else (use_case or "")
+    product_category_str = product_category.value if hasattr(product_category, 'value') else (product_category or "")
+    
     return prompt_template.format(
         user_prompt=user_prompt.strip(),
-        use_case=(use_case.value if use_case else ""),
-        product_category=(product_category.value if product_category else ""),
+        use_case=use_case_str,
+        product_category=product_category_str,
         brand_style=(brand_style or ""),
     ).strip()
 
 
-def get_inference_params(preset_id: Optional[str] = None, mode: GenerationMode = GenerationMode.PRODUCTION) -> Dict[str, Any]:
+def get_inference_params(preset_id: Optional[str] = None, mode: Optional[Any] = None) -> Dict[str, Any]:
     preset = get_preset(preset_id)
     inference_kwargs = dict(preset.get("inference_kwargs", {}))
 
-    if mode == GenerationMode.PREVIEW:
+    mode_str = mode.value if hasattr(mode, 'value') else (mode or GenerationMode.PRODUCTION.value)
+
+    if mode_str == GenerationMode.PREVIEW.value:
         inference_kwargs["num_inference_steps"] = min(inference_kwargs.get("num_inference_steps", 20), 18)
         inference_kwargs["guidance_scale"] = min(inference_kwargs.get("guidance_scale", 7.0), 5.5)
         inference_kwargs["strength"] = min(inference_kwargs.get("strength", 0.7), 0.6)
