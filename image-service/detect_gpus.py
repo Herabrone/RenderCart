@@ -265,7 +265,7 @@ class GPUPlanner:
                     }
                 },
                 'volumes': [
-                    'hf_cache:/cache/huggingface'
+                    'huggingface_cache:/cache/huggingface'
                 ],
                 'restart': 'unless-stopped'
             }
@@ -308,7 +308,7 @@ class GPUPlanner:
                     }
                 },
                 'volumes': [
-                    'hf_cache:/cache/huggingface'
+                    'huggingface_cache:/cache/huggingface'
                 ],
                 'restart': 'unless-stopped'
             }
@@ -351,7 +351,7 @@ class GPUPlanner:
                     }
                 },
                 'volumes': [
-                    'hf_cache:/cache/huggingface'
+                    'huggingface_cache:/cache/huggingface'
                 ],
                 'restart': 'unless-stopped'
             }
@@ -408,6 +408,10 @@ class GPUPlanner:
             # Restart
             if 'restart' in service_config:
                 yaml_lines.append(f'    restart: {service_config["restart"]}')
+
+        yaml_lines.append('')
+        yaml_lines.append('volumes:')
+        yaml_lines.append('  huggingface_cache:')
         
         return '\n'.join(yaml_lines)
 

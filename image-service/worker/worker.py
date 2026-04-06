@@ -1,7 +1,6 @@
 """Celery worker for image generation pipeline."""
 
 import os
-import time
 import random
 import tempfile
 import traceback
@@ -13,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import redis
 import requests
 import torch
+import boto3
 from celery import Celery, signature
 from celery.exceptions import Ignore, Retry
 from diffusers import StableDiffusionXLImg2ImgPipeline
@@ -104,6 +104,8 @@ def get_sdxl_pipeline() -> StableDiffusionXLImg2ImgPipeline:
             variant="fp16",
             safety_checker=None,
         ).to("cuda")
+        _sdxl_pipeline.enable_attention_slicing()
+        _sdxl_pipeline.enable_xformers_memory_efficient_attention()
         logger.info("SDXL pipeline loaded")
     return _sdxl_pipeline
 
@@ -320,18 +322,40 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
         update_job_status(job_id, "processing", progress=90, step="upload")
         
         logger.info("Uploading images", extra={"job_id": job_id, "count": len(generated_images)})
-        
-        # In a real implementation, this would upload to R2
-        # For now, we'll simulate it and return mock URLs
+
+        endpoint = os.getenv("R2_ENDPOINT")
+        access_key = os.getenv("R2_ACCESS_KEY_ID")
+        secret_key = os.getenv("R2_SECRET_ACCESS_KEY")
+        bucket_name = os.getenv("R2_BUCKET_NAME")
+
+        if not endpoint or not access_key or not secret_key or not bucket_name:
+            raise RuntimeError("Missing required R2 configuration in environment variables")
+
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+        )
+
         r2_urls = []
         for i, img_bytes in enumerate(generated_images):
-            # Simulate upload delay
-            time.sleep(0.5)
-            
-            # Create mock URL
-            mock_url = f"https://r2.example.com/{business_id}/jobs/{job_id}/image_{i+1}.png"
-            r2_urls.append(mock_url)
-            logger.info("Image uploaded", extra={"job_id": job_id, "image_number": i+1, "url": mock_url})
+            object_key = f"{business_id}/jobs/{job_id}/image_{i+1}.png"
+
+            s3_client.put_object(
+                Bucket=bucket_name,
+                Key=object_key,
+                Body=img_bytes,
+                ContentType="image/png",
+            )
+
+            url = s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": bucket_name, "Key": object_key},
+                ExpiresIn=3600,
+            )
+            r2_urls.append(url)
+            logger.info("Image uploaded", extra={"job_id": job_id, "image_number": i+1, "object_key": object_key})
         
         return {
             "r2_urls": r2_urls,

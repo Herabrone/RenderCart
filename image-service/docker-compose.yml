@@ -16,7 +16,7 @@ services:
     depends_on:
       - redis
     volumes:
-      - hf_cache:/cache/huggingface
+      - huggingface_cache:/cache/huggingface
     restart: unless-stopped
 
   ui:
@@ -40,4 +40,4 @@ services:
 
 volumes:
   redis_data:
-  hf_cache:
+  huggingface_cache:
