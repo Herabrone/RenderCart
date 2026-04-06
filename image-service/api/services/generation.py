@@ -15,8 +15,46 @@ from url_safety import validate_public_http_url
 
 from api.app_state import celery, logger, redis_store, storage
 from api.ids import generate_batch_id, generate_job_id
-from api.models import BatchGenerateRequest, GenerateRequest, JobStatus
+from api.models import BatchGenerateRequest, BrandKitStyleSnapshot, GenerateRequest, JobStatus
 from api.models_db import Asset, BatchJob, Job
+from api.repositories import get_brand_kit
+
+
+def resolve_brand_kit_fields(
+    db: Session,
+    business_id: str,
+    request: GenerateRequest | BatchGenerateRequest,
+) -> dict:
+    brand_kit_snapshot = request.brand_kit_snapshot
+    if request.brand_kit_id:
+        brand_kit = get_brand_kit(db, request.brand_kit_id, business_id)
+        if not brand_kit:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Brand kit not found",
+            )
+        if brand_kit_snapshot is None:
+            brand_kit_snapshot = BrandKitStyleSnapshot(
+                name=brand_kit.name,
+                background=brand_kit.background,
+                lighting=brand_kit.lighting,
+                tone=brand_kit.tone,
+                framing=brand_kit.framing,
+            )
+        elif not brand_kit_snapshot.name:
+            brand_kit_snapshot = brand_kit_snapshot.model_copy(update={"name": brand_kit.name})
+
+    brand_style = request.brand_style
+    if brand_kit_snapshot is not None:
+        brand_style = brand_kit_snapshot.to_brand_style()
+
+    return {
+        "brand_kit_id": request.brand_kit_id,
+        "brand_kit_snapshot": (
+            brand_kit_snapshot.model_dump() if brand_kit_snapshot is not None else None
+        ),
+        "brand_style": brand_style,
+    }
 
 
 def validate_generate_request(request: GenerateRequest) -> None:
@@ -49,6 +87,8 @@ def create_job_record(
     item_label: Optional[str] = None,
     input_file_name: Optional[str] = None,
     original_image_url: Optional[str] = None,
+    brand_kit_id: Optional[int] = None,
+    brand_kit_snapshot: Optional[dict] = None,
 ) -> Job:
     job = Job(
         job_id=job_id,
@@ -67,6 +107,8 @@ def create_job_record(
         use_case=request.use_case.value,
         product_category=request.product_category.value,
         brand_style=request.brand_style,
+        brand_kit_id=brand_kit_id,
+        brand_kit_snapshot=brand_kit_snapshot,
         output_format=request.output_format.value,
         mode=request.mode.value,
         num_outputs=request.num_outputs,
@@ -86,6 +128,8 @@ def create_batch_record(
     batch_id: str,
     business_id: str,
     request: BatchGenerateRequest,
+    brand_kit_id: Optional[int] = None,
+    brand_kit_snapshot: Optional[dict] = None,
 ) -> BatchJob:
     batch = BatchJob(
         batch_id=batch_id,
@@ -103,6 +147,8 @@ def create_batch_record(
         use_case=request.use_case.value,
         product_category=request.product_category.value,
         brand_style=request.brand_style,
+        brand_kit_id=brand_kit_id,
+        brand_kit_snapshot=brand_kit_snapshot,
         output_format=request.output_format.value,
         mode=request.mode.value,
     )
@@ -149,29 +195,35 @@ def queue_job(
     original_image_url: Optional[str] = None,
 ) -> str:
     validate_generate_request(request)
+    brand_kit_fields = resolve_brand_kit_fields(db, business_id, request)
+    normalized_request = request.model_copy(update={"brand_style": brand_kit_fields["brand_style"]})
 
     job_id = generate_job_id(business_id)
     redis_store.create_job(
         job_id,
         business_id,
-        request,
+        normalized_request,
         batch_id=batch_id,
         item_index=item_index,
         item_label=item_label,
         input_file_name=input_file_name,
         original_image_url=original_image_url,
+        brand_kit_id=brand_kit_fields["brand_kit_id"],
+        brand_kit_snapshot=brand_kit_fields["brand_kit_snapshot"],
     )
     try:
         create_job_record(
             db,
             job_id,
             business_id,
-            request,
+            normalized_request,
             batch_id=batch_id,
             item_index=item_index,
             item_label=item_label,
             input_file_name=input_file_name,
             original_image_url=original_image_url,
+            brand_kit_id=brand_kit_fields["brand_kit_id"],
+            brand_kit_snapshot=brand_kit_fields["brand_kit_snapshot"],
         )
     except Exception:
         logger.warning("Could not persist job record to database", exc_info=True)
@@ -183,21 +235,23 @@ def queue_job(
         status="pending",
         message="Job queued for processing",
         business_id=business_id,
-        image_url=request.image_url,
-        prompt=request.prompt,
-        preset_id=request.preset_id,
-        use_case=request.use_case.value,
-        product_category=request.product_category.value,
-        brand_style=request.brand_style,
-        output_format=request.output_format.value,
-        mode=request.mode.value,
-        num_outputs=request.num_outputs,
+        image_url=normalized_request.image_url,
+        prompt=normalized_request.prompt,
+        preset_id=normalized_request.preset_id,
+        use_case=normalized_request.use_case.value,
+        product_category=normalized_request.product_category.value,
+        brand_style=normalized_request.brand_style,
+        brand_kit_id=brand_kit_fields["brand_kit_id"],
+        brand_kit_snapshot=brand_kit_fields["brand_kit_snapshot"],
+        output_format=normalized_request.output_format.value,
+        mode=normalized_request.mode.value,
+        num_outputs=normalized_request.num_outputs,
         item_index=item_index,
     )
 
     _send_generation_task(
         job_id,
-        request,
+        normalized_request,
         business_id,
         getattr(http_request.state, "correlation_id", None),
     )
@@ -227,24 +281,39 @@ def queue_batch(
     http_request: Request,
 ) -> dict:
     validate_batch_request(request)
+    brand_kit_fields = resolve_brand_kit_fields(db, business_id, request)
+    normalized_request = request.model_copy(update={"brand_style": brand_kit_fields["brand_style"]})
 
     batch_id = generate_batch_id(business_id)
-    batch = create_batch_record(db, batch_id, business_id, request)
+    batch = create_batch_record(
+        db,
+        batch_id,
+        business_id,
+        normalized_request,
+        brand_kit_id=brand_kit_fields["brand_kit_id"],
+        brand_kit_snapshot=brand_kit_fields["brand_kit_snapshot"],
+    )
 
     created_items = []
-    for index, item in enumerate(request.items):
+    for index, item in enumerate(normalized_request.items):
         child_request = GenerateRequest(
             image_url=item.image_url,
-            prompt=request.prompt,
-            preset_id=request.preset_id,
-            use_case=request.use_case,
-            product_category=request.product_category,
-            brand_style=request.brand_style,
-            output_format=request.output_format,
-            mode=request.mode,
-            num_outputs=request.num_outputs,
-            callback_url=request.callback_url,
-            metadata=request.metadata,
+            prompt=normalized_request.prompt,
+            preset_id=normalized_request.preset_id,
+            use_case=normalized_request.use_case,
+            product_category=normalized_request.product_category,
+            brand_style=normalized_request.brand_style,
+            brand_kit_id=brand_kit_fields["brand_kit_id"],
+            brand_kit_snapshot=(
+                BrandKitStyleSnapshot(**brand_kit_fields["brand_kit_snapshot"])
+                if brand_kit_fields["brand_kit_snapshot"]
+                else None
+            ),
+            output_format=normalized_request.output_format,
+            mode=normalized_request.mode,
+            num_outputs=normalized_request.num_outputs,
+            callback_url=normalized_request.callback_url,
+            metadata=normalized_request.metadata,
         )
         job_id = queue_job(
             db,
@@ -299,6 +368,16 @@ def retry_failed_batch_jobs(
             if job.product_category
             else ProductCategory(batch.product_category),
             brand_style=job.brand_style or batch.brand_style,
+            brand_kit_id=job.brand_kit_id or batch.brand_kit_id,
+            brand_kit_snapshot=(
+                BrandKitStyleSnapshot(**job.brand_kit_snapshot)
+                if job.brand_kit_snapshot
+                else (
+                    BrandKitStyleSnapshot(**batch.brand_kit_snapshot)
+                    if batch.brand_kit_snapshot
+                    else None
+                )
+            ),
             output_format=(
                 OutputFormat(job.output_format)
                 if job.output_format

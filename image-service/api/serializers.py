@@ -2,7 +2,7 @@ from datetime import datetime
 
 from api.app_state import storage
 from api.models import JobStatus
-from api.models_db import Asset, BatchJob, Job
+from api.models_db import Asset, BatchJob, BrandKit, Job
 
 
 def asset_to_dict(asset: Asset) -> dict:
@@ -31,6 +31,20 @@ def asset_to_dict(asset: Asset) -> dict:
     }
 
 
+def brand_kit_to_dict(brand_kit: BrandKit) -> dict:
+    return {
+        "id": brand_kit.id,
+        "business_id": brand_kit.business_id,
+        "name": brand_kit.name,
+        "background": brand_kit.background,
+        "lighting": brand_kit.lighting,
+        "tone": brand_kit.tone,
+        "framing": brand_kit.framing,
+        "created_at": brand_kit.created_at.isoformat() if brand_kit.created_at else None,
+        "updated_at": brand_kit.updated_at.isoformat() if brand_kit.updated_at else None,
+    }
+
+
 def job_to_dict(job: Job, include_assets: bool = False) -> dict:
     result = {
         "job_id": job.job_id,
@@ -48,6 +62,8 @@ def job_to_dict(job: Job, include_assets: bool = False) -> dict:
         "use_case": job.use_case,
         "product_category": job.product_category,
         "brand_style": job.brand_style,
+        "brand_kit_id": job.brand_kit_id,
+        "brand_kit_snapshot": job.brand_kit_snapshot,
         "output_format": job.output_format,
         "mode": job.mode,
         "num_outputs": job.num_outputs,
@@ -123,6 +139,8 @@ def build_batch_response(batch: BatchJob) -> dict:
         "use_case": batch.use_case,
         "product_category": batch.product_category,
         "brand_style": batch.brand_style,
+        "brand_kit_id": batch.brand_kit_id,
+        "brand_kit_snapshot": batch.brand_kit_snapshot,
         "output_format": batch.output_format,
         "mode": batch.mode,
         "metadata": batch.batch_metadata,

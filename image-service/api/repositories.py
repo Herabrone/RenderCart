@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
 from api.models import JobStatus
-from api.models_db import Asset, BatchJob, Job
+from api.models_db import Asset, BatchJob, BrandKit, Job
 
 
 def list_batches(
@@ -50,6 +50,23 @@ def get_batch(db: Session, batch_id: str, business_id: str) -> Optional[BatchJob
         db.query(BatchJob)
         .options(selectinload(BatchJob.jobs).selectinload(Job.assets))
         .filter(BatchJob.batch_id == batch_id, BatchJob.business_id == business_id)
+        .first()
+    )
+
+
+def list_brand_kits(db: Session, business_id: str) -> list[BrandKit]:
+    return (
+        db.query(BrandKit)
+        .filter(BrandKit.business_id == business_id)
+        .order_by(BrandKit.updated_at.desc(), BrandKit.id.desc())
+        .all()
+    )
+
+
+def get_brand_kit(db: Session, brand_kit_id: int, business_id: str) -> Optional[BrandKit]:
+    return (
+        db.query(BrandKit)
+        .filter(BrandKit.id == brand_kit_id, BrandKit.business_id == business_id)
         .first()
     )
 
