@@ -1,3 +1,6 @@
+import { useState } from 'react';
+
+import BrandKitManager from './BrandKitManager';
 import ImageUpload from './ImageUpload';
 import GenerateForm from './GenerateForm';
 
@@ -8,6 +11,8 @@ const LeftPanel = ({
   onBatchCreated,
   onStatusChange,
 }) => {
+  const [appliedBrandKit, setAppliedBrandKit] = useState(null);
+
   return (
     <section className="left-panel">
       <div className="panel-card panel-card--primary" id="assets">
@@ -29,6 +34,7 @@ const LeftPanel = ({
             onJobCreated={onJobCreated}
             onBatchCreated={onBatchCreated}
             onStatusChange={onStatusChange}
+            appliedBrandKit={appliedBrandKit}
           />
         </div>
       </div>
@@ -38,6 +44,7 @@ const LeftPanel = ({
         <p className="panel-copy">
           Save time by focusing on product image type, brand tone, and output format instead of raw model settings.
         </p>
+        <BrandKitManager onApply={(brandKit) => setAppliedBrandKit({ ...brandKit, appliedAt: Date.now() })} />
       </div>
     </section>
   );

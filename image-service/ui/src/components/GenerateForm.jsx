@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   generationModeOptions,
@@ -8,12 +8,24 @@ import {
   useCaseOptions,
 } from '../constants/businessOptions';
 import { apiClient } from '../lib/apiClient';
+import { buildBrandKitSnapshot, buildBrandStyle } from '../lib/brandKits';
 
-const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onStatusChange }) => {
+const GenerateForm = ({
+  uploadedImages = [],
+  onJobCreated,
+  onBatchCreated,
+  onStatusChange,
+  appliedBrandKit,
+}) => {
   const [prompt, setPrompt] = useState('');
   const [useCase, setUseCase] = useState('main_product_image');
   const [productCategory, setProductCategory] = useState('general');
-  const [brandStyle, setBrandStyle] = useState('clean and modern');
+  const [brandKitId, setBrandKitId] = useState(null);
+  const [brandKitName, setBrandKitName] = useState('');
+  const [background, setBackground] = useState('');
+  const [lighting, setLighting] = useState('');
+  const [tone, setTone] = useState('clean and modern');
+  const [framing, setFraming] = useState('');
   const [presetId, setPresetId] = useState('realvisxl_default');
   const [outputFormat, setOutputFormat] = useState('product_image');
   const [mode, setMode] = useState('production');
@@ -21,6 +33,19 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
+  const derivedBrandStyle = buildBrandStyle({ background, lighting, tone, framing });
+
+  useEffect(() => {
+    if (!appliedBrandKit) {
+      return;
+    }
+    setBrandKitId(appliedBrandKit.id || null);
+    setBrandKitName(appliedBrandKit.name || '');
+    setBackground(appliedBrandKit.background || '');
+    setLighting(appliedBrandKit.lighting || '');
+    setTone(appliedBrandKit.tone || '');
+    setFraming(appliedBrandKit.framing || '');
+  }, [appliedBrandKit]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -44,7 +69,15 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
       preset_id: presetId,
       use_case: useCase,
       product_category: productCategory,
-      brand_style: brandStyle,
+      brand_style: derivedBrandStyle || null,
+      brand_kit_id: brandKitId || undefined,
+      brand_kit_snapshot: buildBrandKitSnapshot({
+        name: brandKitName,
+        background,
+        lighting,
+        tone,
+        framing,
+      }),
       output_format: outputFormat,
       mode,
       num_outputs: numOutputs,
@@ -123,14 +156,59 @@ const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onSta
       </div>
 
       <div className="form-group">
-        <label htmlFor="brandStyle">Brand style</label>
-        <input
-          id="brandStyle"
-          value={brandStyle}
-          onChange={(event) => setBrandStyle(event.target.value)}
-          placeholder="e.g. minimalist premium lifestyle"
-        />
+        <label>Brand kit style profile</label>
+        {brandKitId ? (
+          <div className="note-text">Applied kit: {brandKitName || `Kit ${brandKitId}`}. You can still tweak these values before generating.</div>
+        ) : (
+          <div className="note-text">Use the saved Brand Kits panel below to prefill these style preferences.</div>
+        )}
       </div>
+
+      <div className="form-grid">
+        <div className="form-group">
+          <label htmlFor="background">Background</label>
+          <input
+            id="background"
+            value={background}
+            onChange={(event) => setBackground(event.target.value)}
+            placeholder="e.g. soft neutral studio backdrop"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="lighting">Lighting</label>
+          <input
+            id="lighting"
+            value={lighting}
+            onChange={(event) => setLighting(event.target.value)}
+            placeholder="e.g. bright diffused window light"
+          />
+        </div>
+      </div>
+
+      <div className="form-grid">
+        <div className="form-group">
+          <label htmlFor="tone">Tone</label>
+          <input
+            id="tone"
+            value={tone}
+            onChange={(event) => setTone(event.target.value)}
+            placeholder="e.g. minimalist premium lifestyle"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="framing">Framing</label>
+          <input
+            id="framing"
+            value={framing}
+            onChange={(event) => setFraming(event.target.value)}
+            placeholder="e.g. centered close-up hero shot"
+          />
+        </div>
+      </div>
+
+      <div className="note-text">Derived brand style: {derivedBrandStyle || 'Add style fields or apply a Brand Kit to build a reusable visual brief.'}</div>
 
       <div className="form-grid">
         <div className="form-group">

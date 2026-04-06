@@ -289,6 +289,12 @@ const JobHistory = () => {
                 <div className="detail-row"><strong>Use case:</strong> {selectedBatch.use_case}</div>
                 <div className="detail-row"><strong>Product category:</strong> {selectedBatch.product_category}</div>
                 <div className="detail-row"><strong>Brand style:</strong> {selectedBatch.brand_style}</div>
+                <div className="detail-row"><strong>Brand kit:</strong> {selectedBatch.brand_kit_snapshot?.name || selectedBatch.brand_kit_id || 'Not applied'}</div>
+                {selectedBatch.brand_kit_snapshot && (
+                  <div className="detail-row">
+                    <strong>Brand kit snapshot:</strong> <pre className="metadata-block">{JSON.stringify(selectedBatch.brand_kit_snapshot, null, 2)}</pre>
+                  </div>
+                )}
                 {selectedBatch.updated_at && (
                   <div className="detail-row"><strong>Updated:</strong> {new Date(selectedBatch.updated_at).toLocaleString()}</div>
                 )}
@@ -352,6 +358,12 @@ const JobHistory = () => {
                 <div className="detail-row"><strong>Use case:</strong> {selectedJob.use_case}</div>
                 <div className="detail-row"><strong>Product category:</strong> {selectedJob.product_category}</div>
                 <div className="detail-row"><strong>Brand style:</strong> {selectedJob.brand_style}</div>
+                <div className="detail-row"><strong>Brand kit:</strong> {selectedJob.brand_kit_snapshot?.name || selectedJob.brand_kit_id || 'Not applied'}</div>
+                {selectedJob.brand_kit_snapshot && (
+                  <div className="detail-row">
+                    <strong>Brand kit snapshot:</strong> <pre className="metadata-block">{JSON.stringify(selectedJob.brand_kit_snapshot, null, 2)}</pre>
+                  </div>
+                )}
                 <div className="detail-row"><strong>Prompt:</strong> {selectedJob.prompt}</div>
                 <div className="detail-row"><strong>Metadata:</strong> <pre className="metadata-block">{JSON.stringify(selectedJob.metadata || {}, null, 2)}</pre></div>
 
