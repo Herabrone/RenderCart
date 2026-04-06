@@ -126,7 +126,7 @@ app.include_router(v1_router)
 def asset_to_dict(asset: Asset) -> dict:
     return {
         "id": asset.id,
-        "job_id": asset.job_id,
+        "job_id": asset.job.job_id if asset.job else asset.job_id,
         "asset_type": asset.asset_type,
         "label": asset.label,
         "asset_url": asset.asset_url,
