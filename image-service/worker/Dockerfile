@@ -12,12 +12,16 @@ WORKDIR /app
 COPY worker/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY api ./api
+COPY configs ./configs
+COPY models ./models
+COPY worker ./worker
 COPY business_presets.py ./
 COPY config.py ./
-COPY model_loader.py ./
 COPY detect_gpus.py ./
 COPY logging_config.py ./
-COPY api/ ./api/
-COPY worker/ ./
+COPY model_loader.py ./
+COPY task_queue.py ./
+COPY url_safety.py ./
 
-CMD ["celery", "-A", "worker", "worker", "--loglevel=info", "--concurrency=1"]
+CMD ["celery", "-A", "worker.worker", "worker", "--loglevel=info", "--concurrency=1"]

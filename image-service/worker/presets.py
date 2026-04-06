@@ -3,9 +3,9 @@ Style presets for image generation.
 Each preset defines a prompt template and inference parameters.
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
-from config import settings, resolve_preset_registry
+from config import resolve_preset_registry, settings
 
 
 def _load_preset_registry() -> Dict[str, Any]:
@@ -21,69 +21,94 @@ DEFAULT_PRESET = PRESET_REGISTRY.get("presets", {}).get(DEFAULT_PRESET_ID, {})
 # Style presets mapping
 STYLE_PRESETS = {
     "realistic": {
-        "prompt_template": "{user_prompt}, professional photography, natural lighting, realistic colors, high quality, 8K, sharp focus",
+        "prompt_template": (
+            "{user_prompt}, professional photography, natural lighting, "
+            "realistic colors, high quality, 8K, sharp focus"
+        ),
         "inference_kwargs": {
             "num_inference_steps": 30,
             "guidance_scale": 7.5,
-            "strength": 0.7
-        }
+            "strength": 0.7,
+        },
     },
     "cartoon": {
-        "prompt_template": "{user_prompt}, cartoon style, 2D illustration, vibrant colors, clean lines, high quality",
+        "prompt_template": (
+            "{user_prompt}, cartoon style, 2D illustration, vibrant colors, "
+            "clean lines, high quality"
+        ),
         "inference_kwargs": {
             "num_inference_steps": 25,
             "guidance_scale": 8.0,
-            "strength": 0.65
-        }
+            "strength": 0.65,
+        },
     },
     "anime": {
-        "prompt_template": "{user_prompt}, anime style, digital art, stylized, high resolution, Japanese animation style",
+        "prompt_template": (
+            "{user_prompt}, anime style, digital art, stylized, "
+            "high resolution, Japanese animation style"
+        ),
         "inference_kwargs": {
             "num_inference_steps": 25,
             "guidance_scale": 7.5,
-            "strength": 0.7
-        }
+            "strength": 0.7,
+        },
     },
     "watercolor": {
-        "prompt_template": "{user_prompt}, watercolor painting, artistic, soft edges, hand-painted texture, high quality",
+        "prompt_template": (
+            "{user_prompt}, watercolor painting, artistic, soft edges, "
+            "hand-painted texture, high quality"
+        ),
         "inference_kwargs": {
             "num_inference_steps": 30,
             "guidance_scale": 7.0,
-            "strength": 0.75
-        }
+            "strength": 0.75,
+        },
     },
     "sketch": {
-        "prompt_template": "{user_prompt}, pencil sketch, hand-drawn, black and white, detailed lines, graphite texture",
+        "prompt_template": (
+            "{user_prompt}, pencil sketch, hand-drawn, black and white, "
+            "detailed lines, graphite texture"
+        ),
         "inference_kwargs": {
             "num_inference_steps": 25,
             "guidance_scale": 8.5,
-            "strength": 0.8
-        }
+            "strength": 0.8,
+        },
     },
     "lifestyle": {
-        "prompt_template": "{user_prompt}, professional lifestyle photography, natural lighting, realistic colors, outdoor setting, high quality, 8K",
+        "prompt_template": (
+            "{user_prompt}, professional lifestyle photography, natural "
+            "lighting, realistic colors, outdoor setting, high quality, 8K"
+        ),
         "inference_kwargs": {
             "num_inference_steps": 30,
             "guidance_scale": 7.5,
-            "strength": 0.7
-        }
+            "strength": 0.7,
+        },
     },
     "studio": {
-        "prompt_template": "{user_prompt}, professional studio photography, clean background, sharp focus, high resolution, product shot, 8K",
+        "prompt_template": (
+            "{user_prompt}, professional studio photography, clean background, "
+            "sharp focus, high resolution, product shot, 8K"
+        ),
         "inference_kwargs": {
             "num_inference_steps": 25,
             "guidance_scale": 8.0,
-            "strength": 0.6
-        }
+            "strength": 0.6,
+        },
     },
     "ad": {
-        "prompt_template": "{user_prompt}, advertising campaign, vibrant colors, eye-catching composition, high contrast, professional grade, billboard ready, 8K",
+        "prompt_template": (
+            "{user_prompt}, advertising campaign, vibrant colors, "
+            "eye-catching composition, high contrast, professional grade, "
+            "billboard ready, 8K"
+        ),
         "inference_kwargs": {
             "num_inference_steps": 35,
             "guidance_scale": 9.0,
-            "strength": 0.8
-        }
-    }
+            "strength": 0.8,
+        },
+    },
 }
 
 
@@ -101,8 +126,11 @@ def get_style_preset(style_name: str) -> Dict[str, Any]:
         ValueError: If style is not found
     """
     if style_name not in STYLE_PRESETS:
-        raise ValueError(f"Unknown style: {style_name}. Available styles: {list(STYLE_PRESETS.keys())}")
-    
+        available_styles = ", ".join(STYLE_PRESETS.keys())
+        raise ValueError(
+            f"Unknown style: {style_name}. Available styles: {available_styles}"
+        )
+
     return STYLE_PRESETS[style_name]
 
 

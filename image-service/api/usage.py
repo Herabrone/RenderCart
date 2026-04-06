@@ -1,118 +1,111 @@
-import redis
 import time
-from typing import Optional
+import uuid
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
 
+import redis
 from config import settings
 
-load_dotenv()
+
+def normalize_usage_endpoint(path: str) -> str:
+    if path.startswith("/api/"):
+        path = path[4:]
+    if path.startswith("/job/"):
+        return "/job/{job_id}"
+    if path.startswith("/jobs/"):
+        return "/jobs/{job_id}"
+    if path.startswith("/batch/") and path.endswith("/retry-failed"):
+        return "/batch/{batch_id}/retry-failed"
+    if path.startswith("/batch/") and path.endswith("/download"):
+        return "/batch/{batch_id}/download"
+    if path.startswith("/batch/"):
+        return "/batch/{batch_id}"
+    if path.startswith("/assets/"):
+        return "/assets/{asset_id}"
+    if path.startswith("/rate_limit/"):
+        return "/rate_limit/{business_id}"
+    return path
+
 
 class UsageTracker:
-    """Track API usage by business ID"""
-    
+    """Track API usage by business ID."""
+
     def __init__(self):
         self.redis = redis.Redis(
             host=settings.redis_host,
             port=settings.redis_port,
             password=settings.redis_password,
-            decode_responses=True
+            decode_responses=True,
         )
-    
+
+    @staticmethod
+    def _event_member(timestamp_ms: int) -> str:
+        return f"{timestamp_ms}:{uuid.uuid4().hex}"
+
+    def _prune_old(self, key: str, cutoff_ms: int) -> None:
+        self.redis.zremrangebyscore(key, 0, cutoff_ms)
+
     def track_request(self, business_id: str, endpoint: str, success: bool = True) -> None:
-        """Track a single API request"""
-        timestamp = int(time.time())
-        
-        # Track individual request
+        timestamp_ms = int(time.time() * 1000)
+        cutoff_ms = timestamp_ms - (30 * 24 * 60 * 60 * 1000)
+
         request_key = f"usage:{business_id}:requests"
-        self.redis.hset(request_key, timestamp, 1)
-        
-        # Track by endpoint
         endpoint_key = f"usage:{business_id}:endpoints:{endpoint}"
-        self.redis.hset(endpoint_key, timestamp, 1)
-        
-        # Track success/failure
-        if success:
-            success_key = f"usage:{business_id}:success"
-        else:
-            success_key = f"usage:{business_id}:failure"
-        self.redis.hset(success_key, timestamp, 1)
-    
+        outcome_key = f"usage:{business_id}:{'success' if success else 'failure'}"
+
+        member = self._event_member(timestamp_ms)
+        for key in (request_key, endpoint_key, outcome_key):
+            self.redis.zadd(key, {member: timestamp_ms})
+            self._prune_old(key, cutoff_ms)
+
+    def _count_recent(self, key: str, cutoff_ms: int) -> int:
+        return int(self.redis.zcount(key, cutoff_ms, "+inf"))
+
     def get_usage_stats(self, business_id: str, days: int = 7) -> dict:
-        """Get usage statistics for a business"""
-        cutoff = int(time.time()) - (days * 24 * 60 * 60)
-        
-        # Get all request timestamps
-        requests_key = f"usage:{business_id}:requests"
-        request_timestamps = self.redis.hkeys(requests_key) or []
-        
-        # Filter by time period
-        recent_requests = [ts for ts in request_timestamps if int(ts) > cutoff]
-        
-        # Count requests
-        total_requests = len(recent_requests)
-        
-        # Get endpoint statistics
-        endpoints = ['/generate', '/upload', '/job', '/gallery']
-        endpoint_stats = {}
-        for endpoint in endpoints:
-            endpoint_key = f"usage:{business_id}:endpoints:{endpoint}"
-            endpoint_timestamps = self.redis.hkeys(endpoint_key) or []
-            recent_endpoint = [ts for ts in endpoint_timestamps if int(ts) > cutoff]
-            endpoint_stats[endpoint] = len(recent_endpoint)
-        
-        # Get success/failure statistics
+        cutoff_ms = int(time.time() * 1000) - (days * 24 * 60 * 60 * 1000)
+        safe_cutoff_ms = max(cutoff_ms, 0)
+        request_key = f"usage:{business_id}:requests"
         success_key = f"usage:{business_id}:success"
         failure_key = f"usage:{business_id}:failure"
-        
-        success_timestamps = self.redis.hkeys(success_key) or []
-        failure_timestamps = self.redis.hkeys(failure_key) or []
-        
-        recent_success = [ts for ts in success_timestamps if int(ts) > cutoff]
-        recent_failure = [ts for ts in failure_timestamps if int(ts) > cutoff]
-        
+
+        total_requests = self._count_recent(request_key, safe_cutoff_ms)
+        successful_requests = self._count_recent(success_key, safe_cutoff_ms)
+        failed_requests = self._count_recent(failure_key, safe_cutoff_ms)
+
+        endpoint_stats = {}
+        endpoint_pattern = f"usage:{business_id}:endpoints:*"
+        for key in self.redis.scan_iter(match=endpoint_pattern):
+            endpoint = key.split(":endpoints:", 1)[1]
+            endpoint_stats[endpoint] = self._count_recent(key, safe_cutoff_ms)
+
         return {
-            'business_id': business_id,
-            'total_requests': total_requests,
-            'successful_requests': len(recent_success),
-            'failed_requests': len(recent_failure),
-            'success_rate': (len(recent_success) / total_requests * 100) if total_requests > 0 else 0,
-            'endpoints': endpoint_stats,
-            'time_period': {
-                'days': days,
-                'start': datetime.fromtimestamp(cutoff).isoformat(),
-                'end': datetime.fromtimestamp(int(time.time())).isoformat()
-            }
+            "business_id": business_id,
+            "total_requests": total_requests,
+            "successful_requests": successful_requests,
+            "failed_requests": failed_requests,
+            "success_rate": (successful_requests / total_requests * 100) if total_requests else 0,
+            "endpoints": dict(sorted(endpoint_stats.items())),
+            "time_period": {
+                "days": days,
+                "start": datetime.fromtimestamp(safe_cutoff_ms / 1000).isoformat(),
+                "end": datetime.fromtimestamp(int(time.time())).isoformat(),
+            },
         }
-    
+
     def get_daily_stats(self, business_id: str, days: int = 7) -> list:
-        """Get daily usage statistics"""
-        cutoff = int(time.time()) - (days * 24 * 60 * 60)
-        
+        cutoff_ms = int(time.time() * 1000) - (days * 24 * 60 * 60 * 1000)
         requests_key = f"usage:{business_id}:requests"
-        all_timestamps = self.redis.hkeys(requests_key) or []
-        
-        # Group by day
+        recent_members = self.redis.zrangebyscore(requests_key, cutoff_ms, "+inf", withscores=True)
+
         daily_counts = {}
-        for ts in all_timestamps:
-            ts_int = int(ts)
-            if ts_int > cutoff:
-                day = datetime.fromtimestamp(ts_int).strftime('%Y-%m-%d')
-                daily_counts[day] = daily_counts.get(day, 0) + 1
-        
-        # Fill in missing days
+        for _, score in recent_members:
+            day = datetime.fromtimestamp(score / 1000).strftime("%Y-%m-%d")
+            daily_counts[day] = daily_counts.get(day, 0) + 1
+
         result = []
-        for i in range(days):
-            day = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
-            result.append({
-                'date': day,
-                'requests': daily_counts.get(day, 0)
-            })
-        
+        for index in range(days):
+            day = (datetime.now() - timedelta(days=index)).strftime("%Y-%m-%d")
+            result.append({"date": day, "requests": daily_counts.get(day, 0)})
         return result
-    
+
     def get_top_businesses(self, limit: int = 10) -> list:
-        """Get top businesses by usage"""
-        # This is a simplified version - in production you'd want to scan all business IDs
-        # For now, we'll just return an empty list
         return []

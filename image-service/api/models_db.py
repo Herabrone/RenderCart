@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, JSON
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -30,14 +31,14 @@ class BatchJob(Base):
     id = Column(Integer, primary_key=True, index=True)
     batch_id = Column(String(128), unique=True, nullable=False, index=True)
     business_id = Column(String(64), nullable=False, index=True)
-    status = Column(String(32), nullable=False)
+    status = Column(String(32), nullable=False, index=True)
     total_items = Column(Integer, nullable=False)
     completed_items = Column(Integer, nullable=False, default=0)
     failed_items = Column(Integer, nullable=False, default=0)
     pending_items = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    metadata = Column(JSON, nullable=True)
+    batch_metadata = Column("metadata", JSON, nullable=True)
     prompt = Column(Text, nullable=True)
     preset_id = Column(String(128), nullable=True)
     use_case = Column(String(64), nullable=True)
@@ -56,13 +57,18 @@ class Job(Base):
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(String(128), unique=True, nullable=False, index=True)
     business_id = Column(String(64), nullable=False, index=True)
-    batch_id = Column(String(128), ForeignKey("batch_jobs.batch_id", ondelete="SET NULL"), nullable=True, index=True)
+    batch_id = Column(
+        String(128),
+        ForeignKey("batch_jobs.batch_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     item_index = Column(Integer, nullable=True)
     item_label = Column(String(128), nullable=True)
     input_file_name = Column(String(256), nullable=True)
     original_image_url = Column(String(2048), nullable=True)
-    status = Column(String(32), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(32), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     image_url = Column(String(2048), nullable=True)
     prompt = Column(Text, nullable=True)
@@ -93,6 +99,7 @@ class Asset(Base):
     asset_type = Column(String(64), nullable=False)
     label = Column(String(128), nullable=True)
     asset_url = Column(String(2048), nullable=False)
+    storage_key = Column(String(1024), nullable=True, index=True)
     output_index = Column(Integer, nullable=True)
     width = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)
@@ -100,7 +107,7 @@ class Asset(Base):
     is_deleted = Column(Boolean, default=False, nullable=False)
     deleted_at = Column(DateTime, nullable=True)
     asset_metadata = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     job = relationship("Job", back_populates="assets")
