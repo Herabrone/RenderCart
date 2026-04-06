@@ -3,6 +3,7 @@ from typing import Generator, List, Optional
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from celery import Celery
 from celery.result import AsyncResult
 from kombu import Queue
@@ -13,6 +14,10 @@ import uuid
 from dotenv import load_dotenv
 import redis
 import logging
+import zipfile
+import tempfile
+import re
+import requests
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -294,6 +299,83 @@ def build_batch_response(batch: BatchJob, jobs: List[Job]) -> dict:
         "updated_at": datetime.utcnow().isoformat(),
         "items": items,
     }
+
+
+def sanitize_name(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_\- ]+", "_", value or "item")
+    return cleaned.strip()[:128] or "item"
+
+
+def get_asset_filename(job: Job, asset: Asset) -> str:
+    label = sanitize_name(job.item_label or f"item_{job.item_index if job.item_index is not None else job.id}")
+    file_name = sanitize_name(asset.label or f"output_{asset.output_index or asset.id}")
+    extension = os.path.splitext(asset.asset_url.split('?', 1)[0])[1] or f".{(asset.file_format or 'png').lower()}"
+    return f"{label}/{file_name}{extension}"
+
+
+def generate_batch_zip(batch: BatchJob, jobs: List[Job]):
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    temp_file.close()
+
+    try:
+        with zipfile.ZipFile(temp_file.name, mode="w", compression=zipfile.ZIP_DEFLATED) as zipf:
+            for job in jobs:
+                if job.status != JobStatus.COMPLETED.value:
+                    continue
+                for asset in [asset for asset in job.assets if not asset.is_deleted]:
+                    try:
+                        response = requests.get(asset.asset_url, timeout=30)
+                        response.raise_for_status()
+                        zip_path = get_asset_filename(job, asset)
+                        zipf.writestr(zip_path, response.content)
+                    except Exception:
+                        logger.warning("Failed to include asset in batch ZIP", extra={"job_id": job.job_id, "asset_url": asset.asset_url}, exc_info=True)
+
+        def file_iterator():
+            with open(temp_file.name, "rb") as fh:
+                while True:
+                    chunk = fh.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
+            try:
+                os.unlink(temp_file.name)
+            except OSError:
+                pass
+
+        return file_iterator()
+    except Exception:
+        try:
+            os.unlink(temp_file.name)
+        except OSError:
+            pass
+        raise
+
+
+@app.get("/batch/{batch_id}/download")
+async def download_batch(
+    batch_id: str,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    batch = db.query(BatchJob).filter(BatchJob.batch_id == batch_id, BatchJob.business_id == business_id).first()
+    if not batch:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
+
+    jobs = db.query(Job).filter(Job.batch_id == batch_id).all()
+    if not jobs:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No jobs found for this batch")
+
+    completed_jobs = [job for job in jobs if job.status == JobStatus.COMPLETED.value]
+    if not completed_jobs:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No completed items available for download")
+
+    filename = f"rendercart_batch_{batch.batch_id}.zip"
+    return StreamingResponse(
+        generate_batch_zip(batch, completed_jobs),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 def retry_failed_batch_jobs(
