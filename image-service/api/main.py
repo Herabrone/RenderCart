@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Generator, List, Optional
+
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from celery import Celery
@@ -10,6 +13,8 @@ import uuid
 from dotenv import load_dotenv
 import redis
 import logging
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
 
 from config import settings
 from db import init_db
@@ -19,17 +24,29 @@ from storage import R2Storage
 from usage import UsageTracker
 from logging_config import setup_logging, generate_correlation_id, set_correlation_id, log_event
 from business_presets import list_output_formats, list_presets
+from api.db import SessionLocal
+from api.models_db import Job, Asset
 
 load_dotenv()
 
 # Setup structured logging
 logger = setup_logging()
 
+api_auth = APIKeyAuth()
+
 app = FastAPI(
     title="RenderCart API",
     description="Product Context Image Generation Engine for RenderCart and Stockman integration.",
     version="1.0.0"
 )
+
+
+def get_db() -> Generator[Session, None, None]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # API v1 Router for Stockman integration
 from fastapi import APIRouter
@@ -40,7 +57,8 @@ v1_router = APIRouter(prefix="/v1", tags=["v1"])
 async def v1_generate(
     request: GenerateRequest,
     http_request: Request,
-    business_id: str = Depends(APIKeyAuth().verify_api_key)
+    business_id: str = Depends(APIKeyAuth().verify_api_key),
+    db: Session = Depends(get_db),
 ) -> JobResponse:
     """Generate images via API v1 with optional webhook callback."""
     job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
@@ -64,6 +82,10 @@ async def v1_generate(
     )
 
     redis_store.create_job(job_id, business_id, request)
+    try:
+        create_job_record(db, job_id, business_id, request)
+    except Exception:
+        logger.warning("Could not persist job record to database", exc_info=True)
 
     celery.send_task(
         "worker.process_job",
@@ -99,6 +121,207 @@ async def v1_get_job(
     return job
 
 app.include_router(v1_router)
+
+
+def asset_to_dict(asset: Asset) -> dict:
+    return {
+        "id": asset.id,
+        "job_id": asset.job_id,
+        "asset_type": asset.asset_type,
+        "label": asset.label,
+        "asset_url": asset.asset_url,
+        "output_index": asset.output_index,
+        "width": asset.width,
+        "height": asset.height,
+        "file_format": asset.file_format,
+        "is_deleted": asset.is_deleted,
+        "asset_metadata": asset.asset_metadata,
+        "created_at": asset.created_at.isoformat() if asset.created_at else None,
+        "updated_at": asset.updated_at.isoformat() if asset.updated_at else None,
+    }
+
+
+def job_to_dict(job: Job, assets: Optional[List[Asset]] = None) -> dict:
+    result = {
+        "job_id": job.job_id,
+        "status": job.status,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        "image_url": job.image_url,
+        "prompt": job.prompt,
+        "preset_id": job.preset_id,
+        "use_case": job.use_case,
+        "product_category": job.product_category,
+        "brand_style": job.brand_style,
+        "output_format": job.output_format,
+        "mode": job.mode,
+        "num_outputs": job.num_outputs,
+        "callback_url": job.callback_url,
+        "metadata": job.job_metadata,
+        "actual_model": job.actual_model,
+        "inference_config_used": job.inference_config_used,
+        "progress": job.progress,
+        "step": job.step,
+        "error": job.error,
+    }
+    if assets is not None:
+        result["assets"] = [asset_to_dict(asset) for asset in assets]
+    return result
+
+
+def create_job_record(db: Session, job_id: str, business_id: str, request: GenerateRequest) -> Job:
+    job = Job(
+        job_id=job_id,
+        business_id=business_id,
+        status=JobStatus.PENDING.value,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        image_url=request.image_url,
+        prompt=request.prompt,
+        preset_id=request.preset_id,
+        use_case=request.use_case.value,
+        product_category=request.product_category.value,
+        brand_style=request.brand_style,
+        output_format=request.output_format.value,
+        mode=request.mode.value,
+        num_outputs=request.num_outputs,
+        callback_url=request.callback_url,
+        job_metadata=request.metadata or {},
+        progress=0,
+        step="queued",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+@app.get("/jobs")
+@app.get("/api/jobs")
+def list_jobs(
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    search: Optional[str] = None,
+    preset_id: Optional[str] = None,
+    output_format: Optional[str] = None,
+    status: Optional[JobStatus] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    query = db.query(Job).filter(Job.business_id == business_id)
+
+    if preset_id:
+        query = query.filter(Job.preset_id == preset_id)
+    if output_format:
+        query = query.filter(Job.output_format == output_format)
+    if status:
+        query = query.filter(Job.status == status.value)
+    if search:
+        search_value = f"%{search}%"
+        query = query.filter(
+            or_(
+                Job.prompt.ilike(search_value),
+                Job.product_category.ilike(search_value),
+                Job.brand_style.ilike(search_value),
+            )
+        )
+    if start_date:
+        try:
+            query = query.filter(Job.created_at >= datetime.fromisoformat(start_date))
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start_date format")
+    if end_date:
+        try:
+            query = query.filter(Job.created_at <= datetime.fromisoformat(end_date))
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format")
+
+    jobs = query.order_by(Job.created_at.desc()).limit(200).all()
+    return {"jobs": [job_to_dict(job) for job in jobs]}
+
+
+@app.get("/jobs/{job_id}")
+@app.get("/api/jobs/{job_id}")
+def get_job_details(
+    job_id: str,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+) -> dict:
+    job = db.query(Job).filter(Job.job_id == job_id, Job.business_id == business_id).first()
+    if not job:
+        fallback_job = redis_store.get_job(job_id)
+        if fallback_job and fallback_job.job_id.startswith(f"job_{business_id}_"):
+            return fallback_job.dict()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    assets = [asset for asset in job.assets if not asset.is_deleted]
+    return job_to_dict(job, assets)
+
+
+@app.get("/assets")
+@app.get("/api/assets")
+def list_assets(
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    asset_type: Optional[str] = None,
+    preset_id: Optional[str] = None,
+    output_format: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    query = db.query(Asset).join(Job).filter(Job.business_id == business_id, Asset.is_deleted == False)
+
+    if asset_type:
+        query = query.filter(Asset.asset_type == asset_type)
+    if preset_id:
+        query = query.filter(Job.preset_id == preset_id)
+    if output_format:
+        query = query.filter(Job.output_format == output_format)
+    if search:
+        query = query.filter(Asset.label.ilike(f"%{search}%"))
+    if start_date:
+        try:
+            query = query.filter(Asset.created_at >= datetime.fromisoformat(start_date))
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start_date format")
+    if end_date:
+        try:
+            query = query.filter(Asset.created_at <= datetime.fromisoformat(end_date))
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format")
+
+    assets = query.order_by(Asset.created_at.desc()).limit(200).all()
+    return {"assets": [asset_to_dict(asset) for asset in assets]}
+
+
+@app.get("/gallery")
+@app.get("/api/gallery")
+def get_gallery(
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+) -> dict:
+    query = db.query(Asset).join(Job).filter(Job.business_id == business_id, Asset.is_deleted == False)
+    assets = query.order_by(Asset.created_at.desc()).limit(200).all()
+    return {"assets": [asset_to_dict(asset) for asset in assets]}
+
+
+@app.delete("/assets/{asset_id}")
+@app.delete("/api/assets/{asset_id}")
+def delete_asset(
+    asset_id: int,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+) -> dict:
+    asset = db.query(Asset).join(Job).filter(Asset.id == asset_id, Job.business_id == business_id).first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    asset.is_deleted = True
+    asset.deleted_at = datetime.utcnow()
+    asset.updated_at = datetime.utcnow()
+    db.commit()
+    return {"detail": "deleted"}
 
 # CORS middleware
 app.add_middleware(
@@ -232,7 +455,8 @@ async def check_rate_limit(business_id: str):
 async def generate_image(
     request: GenerateRequest,
     http_request: Request,
-    business_id: str = Depends(api_auth.verify_api_key_dependency)
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
 ) -> JobResponse:
     """Generate images from input image and prompt"""
     try:
@@ -240,6 +464,10 @@ async def generate_image(
 
         job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
         redis_store.create_job(job_id, business_id, request)
+        try:
+            create_job_record(db, job_id, business_id, request)
+        except Exception:
+            logger.warning("Could not persist job record to database", exc_info=True)
 
         log_event(
             logger,

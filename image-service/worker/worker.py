@@ -1,6 +1,7 @@
 """Celery worker for image generation pipeline."""
 
 import os
+import sys
 import random
 import tempfile
 import traceback
@@ -8,6 +9,8 @@ import logging
 from io import BytesIO
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import redis
 import requests
@@ -24,6 +27,8 @@ from rembg import remove
 from logging_config import log_event, setup_logging
 from model_loader import get_default_pipeline, DEFAULT_MODEL_ID
 from business_presets import build_prompt, get_inference_params, get_output_spec
+from api.db import SessionLocal
+from api.models_db import Job, Asset
 
 LOGGER = setup_logging()
 logger = logging.getLogger("rendercart.worker")
@@ -104,6 +109,37 @@ def get_sdxl_pipeline() -> StableDiffusionXLImg2ImgPipeline:
     return _generation_pipeline
 
 
+def persist_job_status(
+    job_id: str,
+    status: Optional[str] = None,
+    progress: Optional[int] = None,
+    step: Optional[str] = None,
+    actual_model: Optional[str] = None,
+    inference_config_used: Optional[Dict[str, Any]] = None,
+):
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter(Job.job_id == job_id).first()
+        if not job:
+            return
+        if status is not None:
+            job.status = status
+        if progress is not None:
+            job.progress = progress
+        if step is not None:
+            job.step = step
+        if actual_model is not None:
+            job.actual_model = actual_model
+        if inference_config_used is not None:
+            job.inference_config_used = inference_config_used
+        job.updated_at = datetime.utcnow()
+        db.commit()
+    except Exception:
+        logger.warning("Failed to persist job status to database", exc_info=True)
+    finally:
+        db.close()
+
+
 def update_job_status(
     job_id: str,
     status: str,
@@ -148,6 +184,7 @@ def update_job_status(
         job_data["error"] = error
     
     redis_conn.hset(f"job:{job_id}", mapping=job_data)
+    persist_job_status(job_id, status=status, progress=progress, step=step)
 
 
 def download_input_image(job_id: str, image_url: str) -> str:
@@ -363,13 +400,20 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str,
         raise Ignore()
 
 
-def finalize_job(job_id: str, upload_result: Dict[str, Any], actual_model: Optional[str] = None, inference_config_used: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def finalize_job(
+    job_id: str,
+    upload_result: Dict[str, Any],
+    output_spec: Optional[Dict[str, Any]] = None,
+    actual_model: Optional[str] = None,
+    inference_config_used: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     Finalize job and update status to completed.
     
     Args:
         job_id: Job ID
         upload_result: Result from upload task
+        output_spec: Output format specification used for this job
         actual_model: Model identifier used for generation
         inference_config_used: Actual inference parameters applied
         
@@ -393,6 +437,46 @@ def finalize_job(job_id: str, upload_result: Dict[str, Any], actual_model: Optio
             actual_model=actual_model,
             inference_config_used=inference_config_used,
         )
+
+        db = SessionLocal()
+        try:
+            job = db.query(Job).filter(Job.job_id == job_id).first()
+            if job:
+                job.status = "completed"
+                job.updated_at = datetime.utcnow()
+                if actual_model is not None:
+                    job.actual_model = actual_model
+                if inference_config_used is not None:
+                    job.inference_config_used = inference_config_used
+
+                for index, url in enumerate(result["r2_urls"], start=1):
+                    asset = Asset(
+                        job_id=job.id,
+                        asset_type="generated_output",
+                        label=f"Output {index}",
+                        asset_url=url,
+                        output_index=index,
+                        width=output_spec.get("width") if output_spec else None,
+                        height=output_spec.get("height") if output_spec else None,
+                        file_format=output_spec.get("extension") if output_spec else None,
+                        asset_metadata={
+                            "preset_id": job.preset_id,
+                            "output_format": job.output_format,
+                            "use_case": job.use_case,
+                            "product_category": job.product_category,
+                        },
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow(),
+                    )
+                    db.add(asset)
+
+                db.commit()
+        except Exception:
+            db.rollback()
+            logger.warning("Failed to persist job assets in database", exc_info=True)
+        finally:
+            db.close()
+
         logger.info("Job completed", extra={"job_id": job_id, "result": result})
 
         return result
@@ -478,7 +562,13 @@ def process_job(
             processed_data = preprocess_image(job_id, image_path, output_spec)
             generated_images = generate_images(job_id, processed_data, styled_prompt, inference_params, num_outputs)
             upload_result = upload_results(job_id, generated_images, business_id, output_spec.get("extension", "png"))
-            result = finalize_job(job_id, upload_result, actual_model=DEFAULT_MODEL_ID, inference_config_used=inference_params)
+            result = finalize_job(
+                job_id,
+                upload_result,
+                output_spec=output_spec,
+                actual_model=DEFAULT_MODEL_ID,
+                inference_config_used=inference_params,
+            )
 
             if callback_url:
                 try:
