@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 import redis
 import logging
 
+from config import settings
+from db import init_db
 from models import GenerateRequest, JobResponse, JobStatus, RedisJobStore
 from auth import APIKeyAuth
 from storage import R2Storage
@@ -97,6 +99,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def startup_event():
+    logger.info("Starting RenderCart API", extra={"environment": settings.environment})
+    init_db()
+    logger.info(
+        "PostgreSQL startup check passed",
+        extra={"postgres_host": settings.postgres_host, "postgres_db": settings.postgres_db}
+    )
 
 # Middleware to generate and propagate correlation IDs
 @app.middleware("http")

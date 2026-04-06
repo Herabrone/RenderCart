@@ -1,22 +1,20 @@
 import boto3
 from botocore.client import Config
-import os
 from typing import Optional
-from dotenv import load_dotenv
 
-load_dotenv()
+from config import settings
 
 class R2Storage:
     def __init__(self):
         self.s3 = boto3.client(
             's3',
-            endpoint_url=os.getenv('R2_ENDPOINT'),
-            aws_access_key_id=os.getenv('R2_ACCESS_KEY_ID'),
-            aws_secret_access_key=os.getenv('R2_SECRET_ACCESS_KEY'),
+            endpoint_url=settings.r2_endpoint,
+            aws_access_key_id=settings.r2_access_key_id,
+            aws_secret_access_key=settings.r2_secret_access_key,
             config=Config(signature_version='s3v4'),
             region_name='auto',
         )
-        self.bucket_name = os.getenv('R2_BUCKET_NAME', 'rendercart-images')
+        self.bucket_name = settings.r2_bucket_name or 'rendercart-images'
 
     def upload_image(self, image_bytes: bytes, path: str) -> str:
         """

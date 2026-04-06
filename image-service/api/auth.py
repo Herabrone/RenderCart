@@ -3,31 +3,23 @@ import os
 import hashlib
 from fastapi import Security, HTTPException, status
 from fastapi.security.api_key import APIKeyHeader
-from dotenv import load_dotenv
-
-load_dotenv()
+from config import settings
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
 
 class APIKeyAuth:
     """API Key authentication for business customers"""
     
     def __init__(self):
-        # Load business API keys from config file
-        # Use absolute path or default to current directory if not found in api/
-        config_path = os.getenv('BUSINESS_API_KEYS_CONFIG', 'api/business_keys.json')
-        
+        config_path = settings.business_api_keys_config
         if not os.path.exists(config_path):
-            # Fallback for different container run contexts
             alt_path = 'business_keys.json'
             if os.path.exists(alt_path):
                 config_path = alt_path
             else:
-                # For local dev without keys, we can create a dummy one or handle it gracefully
-                # But if NO_AUTH is handled elsewhere, we still need this to not crash on init
                 self.business_keys = {}
                 return
-        
         with open(config_path, 'r') as f:
             self.business_keys = json.load(f)
     
@@ -56,8 +48,7 @@ class APIKeyAuth:
         Raises:
             HTTPException: If API key is invalid
         """
-        # Bypass for local development if NO_AUTH is set
-        if os.getenv('NO_AUTH') == 'true':
+        if settings.no_auth:
             return 'local_dev'
 
         if not api_key:
@@ -68,7 +59,6 @@ class APIKeyAuth:
         
         api_key_hash = self.get_api_key_hash(api_key)
         
-        # Find matching business
         for business_id, config in self.business_keys.items():
             stored_hash = self.normalize_stored_hash(config.get('api_key_hash', ''))
             if stored_hash == api_key_hash:

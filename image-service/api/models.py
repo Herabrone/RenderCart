@@ -2,8 +2,9 @@ from enum import Enum
 from pydantic import BaseModel
 from typing import List, Optional
 import redis
-import os
 from datetime import datetime
+
+from config import settings
 
 class ImageStyle(str, Enum):
     """Supported image generation styles"""
@@ -50,9 +51,9 @@ class RedisJobStore:
     
     def __init__(self):
         self.redis = redis.Redis(
-            host=os.getenv('REDIS_HOST', 'redis'),
-            port=int(os.getenv('REDIS_PORT', '6379')),
-            password=os.getenv('REDIS_PASSWORD', ''),
+            host=settings.redis_host,
+            port=settings.redis_port,
+            password=settings.redis_password,
             decode_responses=True
         )
     

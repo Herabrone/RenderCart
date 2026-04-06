@@ -2,8 +2,9 @@ import redis
 import time
 from typing import Optional
 from datetime import datetime, timedelta
-import os
 from dotenv import load_dotenv
+
+from config import settings
 
 load_dotenv()
 
@@ -12,9 +13,9 @@ class UsageTracker:
     
     def __init__(self):
         self.redis = redis.Redis(
-            host=os.getenv('REDIS_HOST', 'redis'),
-            port=int(os.getenv('REDIS_PORT', '6379')),
-            password=os.getenv('REDIS_PASSWORD', ''),
+            host=settings.redis_host,
+            port=settings.redis_port,
+            password=settings.redis_password,
             decode_responses=True
         )
     
