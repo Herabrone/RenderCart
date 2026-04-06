@@ -5,6 +5,7 @@ import LeftPanel from './components/LeftPanel';
 import RightPanel from './components/RightPanel';
 import JobStatus from './components/JobStatus';
 import Gallery from './components/Gallery';
+import JobHistory from './components/JobHistory';
 import './App.css';
 
 function App() {
@@ -70,6 +71,12 @@ function App() {
     </div>
   );
 
+  const historyPage = (
+    <div className="history-page">
+      <JobHistory />
+    </div>
+  );
+
   return (
     <Router>
       <div className="app">
@@ -79,6 +86,7 @@ function App() {
           <Routes>
             <Route path="/" element={homePage} />
             <Route path="/gallery" element={galleryPage} />
+            <Route path="/history" element={historyPage} />
           </Routes>
         </main>
 

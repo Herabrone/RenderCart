@@ -3,6 +3,7 @@ import axios from 'axios';
 import {
   useCaseOptions,
   productCategoryOptions,
+  presetOptions,
   outputFormatOptions,
   generationModeOptions,
 } from '../constants/businessOptions';
@@ -12,6 +13,7 @@ const GenerateForm = ({ imageUrl, onJobCreated, onStatusChange }) => {
   const [useCase, setUseCase] = useState('main_product_image');
   const [productCategory, setProductCategory] = useState('general');
   const [brandStyle, setBrandStyle] = useState('clean and modern');
+  const [presetId, setPresetId] = useState('realvisxl_default');
   const [outputFormat, setOutputFormat] = useState('product_image');
   const [mode, setMode] = useState('production');
   const [numOutputs, setNumOutputs] = useState(1);
@@ -42,7 +44,7 @@ const GenerateForm = ({ imageUrl, onJobCreated, onStatusChange }) => {
         {
           image_url: imageUrl,
           prompt,
-          preset_id: 'realvisxl_default',
+          preset_id: presetId,
           use_case: useCase,
           product_category: productCategory,
           brand_style: brandStyle,
@@ -115,13 +117,24 @@ const GenerateForm = ({ imageUrl, onJobCreated, onStatusChange }) => {
         />
       </div>
 
-      <div className="form-group">
-        <label htmlFor="outputFormat">Output format</label>
-        <select id="outputFormat" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)}>
-          {outputFormatOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+      <div className="form-grid">
+        <div className="form-group">
+          <label htmlFor="presetId">Export preset</label>
+          <select id="presetId" value={presetId} onChange={(e) => setPresetId(e.target.value)}>
+            {presetOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="outputFormat">Output format</label>
+          <select id="outputFormat" value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)}>
+            {outputFormatOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <button type="button" className="link-button" onClick={() => setShowAdvanced(!showAdvanced)}>

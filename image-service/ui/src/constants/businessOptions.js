@@ -17,6 +17,14 @@ export const productCategoryOptions = [
   { value: 'jewelry', label: 'Jewelry' },
 ];
 
+export const presetOptions = [
+  { value: 'realvisxl_default', label: 'Default production preset' },
+  { value: 'shopify_storefront', label: 'Shopify storefront preset' },
+  { value: 'amazon_white_background', label: 'Amazon white background preset' },
+  { value: 'social_square', label: 'Social square preset' },
+  { value: 'social_portrait', label: 'Social portrait preset' },
+];
+
 export const outputFormatOptions = [
   { value: 'product_image', label: 'Square product image' },
   { value: 'shopify_storefront', label: 'Shopify storefront' },
