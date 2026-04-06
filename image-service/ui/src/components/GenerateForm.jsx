@@ -158,7 +158,19 @@ const GenerateForm = ({
       <div className="form-group">
         <label>Brand kit style profile</label>
         {brandKitId ? (
-          <div className="note-text">Applied kit: {brandKitName || `Kit ${brandKitId}`}. You can still tweak these values before generating.</div>
+          <>
+            <div className="note-text">Applied kit: {brandKitName || `Kit ${brandKitId}`}. You can still tweak these values before generating.</div>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setBrandKitId(null);
+                setBrandKitName('');
+              }}
+            >
+              Clear saved kit association
+            </button>
+          </>
         ) : (
           <div className="note-text">Use the saved Brand Kits panel below to prefill these style preferences.</div>
         )}

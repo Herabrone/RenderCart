@@ -34,6 +34,7 @@ class FakeRedis:
 def test_normalize_usage_endpoint_handles_dynamic_paths():
     assert normalize_usage_endpoint("/batch/abc/download") == "/batch/{batch_id}/download"
     assert normalize_usage_endpoint("/job/job_123") == "/job/{job_id}"
+    assert normalize_usage_endpoint("/brand-kits/9") == "/brand-kits/{brand_kit_id}"
 
 
 def test_usage_tracker_collects_endpoint_stats(monkeypatch):
