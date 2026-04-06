@@ -44,6 +44,8 @@ class BatchJob(Base):
     use_case = Column(String(64), nullable=True)
     product_category = Column(String(64), nullable=True)
     brand_style = Column(String(128), nullable=True)
+    brand_kit_id = Column(Integer, nullable=True, index=True)
+    brand_kit_snapshot = Column(JSON, nullable=True)
     output_format = Column(String(64), nullable=True)
     mode = Column(String(64), nullable=True)
     batch_error = Column(Text, nullable=True)
@@ -76,6 +78,8 @@ class Job(Base):
     use_case = Column(String(64), nullable=True)
     product_category = Column(String(64), nullable=True)
     brand_style = Column(String(128), nullable=True)
+    brand_kit_id = Column(Integer, nullable=True, index=True)
+    brand_kit_snapshot = Column(JSON, nullable=True)
     output_format = Column(String(64), nullable=True)
     mode = Column(String(64), nullable=True)
     num_outputs = Column(Integer, nullable=True)
@@ -111,3 +115,17 @@ class Asset(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     job = relationship("Job", back_populates="assets")
+
+
+class BrandKit(Base):
+    __tablename__ = "brand_kits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(String(64), nullable=False, index=True)
+    name = Column(String(128), nullable=False)
+    background = Column(String(256), nullable=False)
+    lighting = Column(String(256), nullable=False)
+    tone = Column(String(256), nullable=False)
+    framing = Column(String(256), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)

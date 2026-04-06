@@ -9,6 +9,74 @@ from config import settings
 from pydantic import BaseModel
 
 
+class BrandKitStyleSnapshot(BaseModel):
+    name: Optional[str] = None
+    background: str
+    lighting: str
+    tone: str
+    framing: str
+
+    def to_brand_style(self) -> str:
+        return ", ".join(
+            [
+                f"background: {self.background}",
+                f"lighting: {self.lighting}",
+                f"tone: {self.tone}",
+                f"framing: {self.framing}",
+            ]
+        )
+
+
+class BrandKitBase(BaseModel):
+    name: str
+    background: str
+    lighting: str
+    tone: str
+    framing: str
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        for field_name in ("name", "background", "lighting", "tone", "framing"):
+            value = getattr(self, field_name)
+            if not value or not value.strip():
+                raise ValueError(f"{field_name} is required")
+            setattr(self, field_name, value.strip())
+
+
+class BrandKitCreateRequest(BrandKitBase):
+    pass
+
+
+class BrandKitUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    background: Optional[str] = None
+    lighting: Optional[str] = None
+    tone: Optional[str] = None
+    framing: Optional[str] = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        provided_values = 0
+        for field_name in ("name", "background", "lighting", "tone", "framing"):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            trimmed = value.strip()
+            if not trimmed:
+                raise ValueError(f"{field_name} cannot be empty")
+            setattr(self, field_name, trimmed)
+            provided_values += 1
+        if provided_values == 0:
+            raise ValueError("At least one field must be provided")
+
+
+class BrandKitResponse(BrandKitBase):
+    id: int
+    business_id: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class GenerateRequest(BaseModel):
     """Request model for business-oriented image generation."""
 
@@ -18,6 +86,8 @@ class GenerateRequest(BaseModel):
     use_case: UseCase = UseCase.MAIN_PRODUCT_IMAGE
     product_category: ProductCategory = ProductCategory.GENERAL
     brand_style: Optional[str] = None
+    brand_kit_id: Optional[int] = None
+    brand_kit_snapshot: Optional[BrandKitStyleSnapshot] = None
     output_format: OutputFormat = OutputFormat.PRODUCT_IMAGE
     mode: GenerationMode = GenerationMode.PRODUCTION
     num_outputs: int = 1
@@ -43,6 +113,8 @@ class BatchGenerateRequest(BaseModel):
     use_case: UseCase = UseCase.MAIN_PRODUCT_IMAGE
     product_category: ProductCategory = ProductCategory.GENERAL
     brand_style: Optional[str] = None
+    brand_kit_id: Optional[int] = None
+    brand_kit_snapshot: Optional[BrandKitStyleSnapshot] = None
     output_format: OutputFormat = OutputFormat.PRODUCT_IMAGE
     mode: GenerationMode = GenerationMode.PRODUCTION
     num_outputs: int = 1
@@ -111,6 +183,8 @@ class JobResponse(BaseModel):
     use_case: Optional[UseCase] = None
     product_category: Optional[ProductCategory] = None
     brand_style: Optional[str] = None
+    brand_kit_id: Optional[int] = None
+    brand_kit_snapshot: Optional[Dict[str, Any]] = None
     output_format: Optional[OutputFormat] = None
     mode: Optional[GenerationMode] = None
     num_outputs: Optional[int] = None
@@ -151,6 +225,8 @@ class RedisJobStore:
         item_label: Optional[str] = None,
         input_file_name: Optional[str] = None,
         original_image_url: Optional[str] = None,
+        brand_kit_id: Optional[int] = None,
+        brand_kit_snapshot: Optional[Dict[str, Any]] = None,
     ) -> None:
         key = f"job:{job_id}"
         self.redis.hset(
@@ -171,6 +247,8 @@ class RedisJobStore:
                 "use_case": request.use_case.value,
                 "product_category": request.product_category.value,
                 "brand_style": request.brand_style or "",
+                "brand_kit_id": str(brand_kit_id) if brand_kit_id is not None else "",
+                "brand_kit_snapshot": json.dumps(brand_kit_snapshot or {}),
                 "output_format": request.output_format.value,
                 "mode": request.mode.value,
                 "num_outputs": str(request.num_outputs),
@@ -209,6 +287,14 @@ class RedisJobStore:
             except json.JSONDecodeError:
                 inference_config_used = None
 
+        brand_kit_snapshot = None
+        if data.get("brand_kit_snapshot"):
+            try:
+                parsed_snapshot = json.loads(data["brand_kit_snapshot"])
+                brand_kit_snapshot = parsed_snapshot or None
+            except json.JSONDecodeError:
+                brand_kit_snapshot = None
+
         return JobResponse(
             job_id=job_id,
             status=JobStatus(data["status"]),
@@ -224,6 +310,8 @@ class RedisJobStore:
                 else None
             ),
             brand_style=data.get("brand_style"),
+            brand_kit_id=int(data["brand_kit_id"]) if data.get("brand_kit_id") else None,
+            brand_kit_snapshot=brand_kit_snapshot,
             output_format=(
                 OutputFormat(data["output_format"])
                 if data.get("output_format")
