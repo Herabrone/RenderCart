@@ -8,32 +8,58 @@ import logging
 import json
 import uuid
 from typing import Optional
-from pythonjsonlogger import jsonlogger
+
+try:
+    from pythonjsonlogger import jsonlogger
+except ImportError:  # pragma: no cover - fallback for minimal dev environments
+    jsonlogger = None
 
 
-class JsonFormatter(jsonlogger.JsonFormatter):
-    """Custom JSON formatter for structured logging."""
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._default_time_format = '%Y-%m-%dT%H:%M:%S.%fZ'
-        self._default_msec_format = '%s%%03d'  # Milliseconds
-    
-    def add_fields(self, log_record, record, message_dict):
-        super().add_fields(log_record, record, message_dict)
-        
-        # Add correlation_id if present
-        if hasattr(record, 'correlation_id'):
-            log_record['correlation_id'] = record.correlation_id
-        
-        # Add service name
-        log_record['service'] = 'rendercart'
-        
-        # Add environment
-        log_record['environment'] = os.getenv('ENVIRONMENT', 'development')
-        
-        # Add version
-        log_record['version'] = '1.0.0'
+if jsonlogger:
+    class JsonFormatter(jsonlogger.JsonFormatter):
+        """Custom JSON formatter for structured logging."""
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._default_time_format = '%Y-%m-%dT%H:%M:%S.%fZ'
+            self._default_msec_format = '%s%%03d'
+
+        def add_fields(self, log_record, record, message_dict):
+            super().add_fields(log_record, record, message_dict)
+            if hasattr(record, 'correlation_id'):
+                log_record['correlation_id'] = record.correlation_id
+            log_record['service'] = 'rendercart'
+            log_record['environment'] = os.getenv('ENVIRONMENT', 'development')
+            log_record['version'] = '1.0.0'
+else:
+    class JsonFormatter(logging.Formatter):
+        """Fallback formatter when python-json-logger is unavailable."""
+
+        def format(self, record):
+            payload = {
+                "timestamp": self.formatTime(record, self.datefmt),
+                "level": record.levelname,
+                "logger": record.name,
+                "message": record.getMessage(),
+                "service": "rendercart",
+                "environment": os.getenv('ENVIRONMENT', 'development'),
+                "version": "1.0.0",
+            }
+            correlation_id = getattr(record, "correlation_id", None)
+            if correlation_id:
+                payload["correlation_id"] = correlation_id
+            for key, value in record.__dict__.items():
+                if key.startswith("_") or key in payload:
+                    continue
+                if key in {
+                    "name", "msg", "args", "levelname", "levelno", "pathname",
+                    "filename", "module", "exc_info", "exc_text", "stack_info",
+                    "lineno", "funcName", "created", "msecs", "relativeCreated",
+                    "thread", "threadName", "process", "processName",
+                }:
+                    continue
+                payload[key] = value
+            return json.dumps(payload, default=str)
 
 
 def get_log_level() -> str:
@@ -78,15 +104,18 @@ def setup_logging(correlation_id: Optional[str] = None) -> logging.Logger:
     console_handler.setLevel(get_log_level())
     
     # Create JSON formatter
-    formatter = JsonFormatter(
-        '%(asctime)s %(levelname)s %(name)s %(message)s',
-        rename_fields={
-            'asctime': 'timestamp',
-            'levelname': 'level',
-            'name': 'logger',
-            'message': 'message'
-        }
-    )
+    if jsonlogger:
+        formatter = JsonFormatter(
+            '%(asctime)s %(levelname)s %(name)s %(message)s',
+            rename_fields={
+                'asctime': 'timestamp',
+                'levelname': 'level',
+                'name': 'logger',
+                'message': 'message'
+            }
+        )
+    else:
+        formatter = JsonFormatter()
     console_handler.setFormatter(formatter)
     
     # Add handler to root logger so child loggers emit JSON consistently
