@@ -350,8 +350,6 @@ def list_batches(
         query = query.filter(BatchJob.preset_id == preset_id)
     if output_format:
         query = query.filter(BatchJob.output_format == output_format)
-    if status:
-        query = query.filter(BatchJob.status == status.value)
     if search:
         search_value = f"%{search}%"
         query = query.filter(
@@ -373,7 +371,10 @@ def list_batches(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format")
 
     batches = query.order_by(BatchJob.created_at.desc()).limit(200).all()
-    return {"batches": [batch_to_dict(batch, db) for batch in batches]}
+    batch_data = [batch_to_dict(batch, db) for batch in batches]
+    if status:
+        batch_data = [batch for batch in batch_data if batch["status"] == status.value]
+    return {"batches": batch_data}
 
 
 def sanitize_name(value: str) -> str:
