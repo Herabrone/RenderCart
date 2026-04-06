@@ -295,10 +295,85 @@ def build_batch_response(batch: BatchJob, jobs: List[Job]) -> dict:
         "failed_items": failed_items,
         "pending_items": pending_items,
         "progress": progress,
+        "metadata": batch.metadata,
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "updated_at": datetime.utcnow().isoformat(),
         "items": items,
     }
+
+
+def batch_to_dict(batch: BatchJob, db: Session) -> dict:
+    jobs = db.query(Job).filter(Job.batch_id == batch.batch_id).all()
+    completed_items = sum(1 for job in jobs if job.status == JobStatus.COMPLETED.value)
+    failed_items = sum(1 for job in jobs if job.status == JobStatus.FAILED.value)
+    pending_items = sum(1 for job in jobs if job.status == JobStatus.PENDING.value)
+    total_items = len(jobs)
+    progress = round(sum(job.progress or 0 for job in jobs) / total_items) if total_items else 0
+
+    return {
+        "batch_id": batch.batch_id,
+        "business_id": batch.business_id,
+        "status": compute_batch_status(jobs),
+        "total_items": total_items,
+        "completed_items": completed_items,
+        "failed_items": failed_items,
+        "pending_items": pending_items,
+        "progress": progress,
+        "prompt": batch.prompt,
+        "preset_id": batch.preset_id,
+        "use_case": batch.use_case,
+        "product_category": batch.product_category,
+        "brand_style": batch.brand_style,
+        "output_format": batch.output_format,
+        "mode": batch.mode,
+        "metadata": batch.metadata,
+        "created_at": batch.created_at.isoformat() if batch.created_at else None,
+        "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
+    }
+
+
+@app.get("/batches")
+@app.get("/api/batches")
+def list_batches(
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    search: Optional[str] = None,
+    preset_id: Optional[str] = None,
+    output_format: Optional[str] = None,
+    status: Optional[JobStatus] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    query = db.query(BatchJob).filter(BatchJob.business_id == business_id)
+
+    if preset_id:
+        query = query.filter(BatchJob.preset_id == preset_id)
+    if output_format:
+        query = query.filter(BatchJob.output_format == output_format)
+    if status:
+        query = query.filter(BatchJob.status == status.value)
+    if search:
+        search_value = f"%{search}%"
+        query = query.filter(
+            or_(
+                BatchJob.prompt.ilike(search_value),
+                BatchJob.brand_style.ilike(search_value),
+                BatchJob.product_category.ilike(search_value),
+            )
+        )
+    if start_date:
+        try:
+            query = query.filter(BatchJob.created_at >= datetime.fromisoformat(start_date))
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start_date format")
+    if end_date:
+        try:
+            query = query.filter(BatchJob.created_at <= datetime.fromisoformat(end_date))
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format")
+
+    batches = query.order_by(BatchJob.created_at.desc()).limit(200).all()
+    return {"batches": [batch_to_dict(batch, db) for batch in batches]}
 
 
 def sanitize_name(value: str) -> str:
