@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     r2_secret_access_key: str | None = Field(None, env="R2_SECRET_ACCESS_KEY")
     r2_bucket_name: str | None = Field(None, env="R2_BUCKET_NAME")
     hf_home: str = Field("/cache/huggingface", env="HF_HOME")
+    model_registry_path: str = Field("configs/model_registry.yaml", env="MODEL_REGISTRY_PATH")
+    preset_registry_path: str = Field("configs/preset_registry.yaml", env="PRESET_REGISTRY_PATH")
+    default_model_id: str = Field("realvisxl_v4", env="DEFAULT_MODEL_ID")
+    default_preset_id: str = Field("realvisxl_default", env="DEFAULT_PRESET_ID")
 
     model_config = {
         "env_file": ".env",

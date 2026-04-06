@@ -22,6 +22,7 @@ from PIL import Image
 from rembg import remove
 
 from logging_config import log_event, setup_logging
+from model_loader import get_default_pipeline
 from presets import apply_style_to_prompt, get_inference_params
 
 LOGGER = setup_logging()
@@ -58,7 +59,7 @@ redis_conn = redis.Redis(
     decode_responses=True,
 )
 
-_sdxl_pipeline: Optional[StableDiffusionXLImg2ImgPipeline] = None
+_generation_pipeline: Optional[StableDiffusionXLImg2ImgPipeline] = None
 
 
 def check_gpu_availability() -> bool:
@@ -94,25 +95,13 @@ def check_gpu_availability() -> bool:
 
 def get_sdxl_pipeline() -> StableDiffusionXLImg2ImgPipeline:
     """Create pipeline lazily once per worker process."""
-    global _sdxl_pipeline
-    if _sdxl_pipeline is None:
+    global _generation_pipeline
+    if _generation_pipeline is None:
         if not check_gpu_availability():
             raise RuntimeError("GPU preflight check failed. CUDA device is required for generation.")
-        logger.info("Loading SDXL pipeline")
-        _sdxl_pipeline = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            torch_dtype=torch.float16,
-            variant="fp16",
-        )
-        
-        # Memory optimizations for 12GB VRAM
-        _sdxl_pipeline.enable_model_cpu_offload()
-        _sdxl_pipeline.enable_attention_slicing()
-        _sdxl_pipeline.enable_vae_slicing()
-        _sdxl_pipeline.enable_vae_tiling()
-        
-        logger.info("SDXL pipeline loaded with CPU offloading")
-    return _sdxl_pipeline
+        logger.info("Loading default generation pipeline")
+        _generation_pipeline = get_default_pipeline()
+    return _generation_pipeline
 
 
 def update_job_status(

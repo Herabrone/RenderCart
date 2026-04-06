@@ -5,6 +5,19 @@ Each preset defines a prompt template and inference parameters.
 
 from typing import Dict, Any
 
+from config import settings, resolve_preset_registry
+
+
+def _load_preset_registry() -> Dict[str, Any]:
+    try:
+        return resolve_preset_registry()
+    except Exception:
+        return {}
+
+PRESET_REGISTRY = _load_preset_registry()
+DEFAULT_PRESET_ID = settings.default_preset_id
+DEFAULT_PRESET = PRESET_REGISTRY.get("presets", {}).get(DEFAULT_PRESET_ID, {})
+
 # Style presets mapping
 STYLE_PRESETS = {
     "realistic": {
