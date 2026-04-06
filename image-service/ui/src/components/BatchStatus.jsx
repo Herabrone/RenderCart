@@ -8,6 +8,8 @@ const BatchStatus = ({ batchId, onStatusChange }) => {
   const [error, setError] = useState(null);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState(null);
 
   const fetchBatch = useCallback(async () => {
     try {
@@ -74,6 +76,40 @@ const BatchStatus = ({ batchId, onStatusChange }) => {
   };
 
   const failedItemsCount = items.filter((item) => item.status === 'failed').length;
+  const hasDownloadableAssets = items.some((item) => item.output_urls && item.output_urls.length > 0);
+
+  const handleDownloadBatch = async () => {
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const apiKey = localStorage.getItem('apiKey');
+      const response = await fetch(`/api/batch/${batchId}/download`, {
+        headers: {
+          ...(apiKey && { 'X-API-Key': apiKey }),
+        },
+      });
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || 'Download failed.');
+      }
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get('content-disposition');
+      const fileNameMatch = contentDisposition && contentDisposition.match(/filename="?(.+?)"?/);
+      const fileName = fileNameMatch ? fileNameMatch[1] : `${batchId}.zip`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setDownloadError(err.message || 'Download failed.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="batch-status">
@@ -103,6 +139,20 @@ const BatchStatus = ({ batchId, onStatusChange }) => {
             {retrying ? 'Retrying failed items…' : `Retry ${failedItemsCount} failed item${failedItemsCount === 1 ? '' : 's'}`}
           </button>
           {retryError && <div className="error-message" style={{ marginTop: '10px' }}>{retryError}</div>}
+        </div>
+      )}
+
+      {hasDownloadableAssets && (
+        <div className="download-panel" style={{ marginTop: '16px' }}>
+          <button
+            type="button"
+            className="generate-button"
+            onClick={handleDownloadBatch}
+            disabled={downloading}
+          >
+            {downloading ? 'Downloading batch…' : 'Download batch ZIP'}
+          </button>
+          {downloadError && <div className="error-message" style={{ marginTop: '10px' }}>{downloadError}</div>}
         </div>
       )}
 
