@@ -13,6 +13,7 @@ import redis
 import requests
 import torch
 import boto3
+from botocore.client import Config
 from celery import Celery, signature
 from celery.exceptions import Ignore
 from diffusers import StableDiffusionXLImg2ImgPipeline
@@ -336,6 +337,8 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
             endpoint_url=endpoint,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
+            config=Config(signature_version="s3v4"),
+            region_name="auto",
         )
 
         r2_urls = []

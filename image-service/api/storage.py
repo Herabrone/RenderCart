@@ -1,4 +1,5 @@
 import boto3
+from botocore.client import Config
 import os
 from typing import Optional
 from dotenv import load_dotenv
@@ -12,6 +13,8 @@ class R2Storage:
             endpoint_url=os.getenv('R2_ENDPOINT'),
             aws_access_key_id=os.getenv('R2_ACCESS_KEY_ID'),
             aws_secret_access_key=os.getenv('R2_SECRET_ACCESS_KEY'),
+            config=Config(signature_version='s3v4'),
+            region_name='auto',
         )
         self.bucket_name = os.getenv('R2_BUCKET_NAME', 'rendercart-images')
 
