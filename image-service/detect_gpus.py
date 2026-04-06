@@ -213,7 +213,7 @@ class GPUPlanner:
             if role == "main":
                 queues = "generate"
             elif role == "light":
-                queues = "generate,preprocess,upload"
+                queues = "download,generate,preprocess,upload,status"
             else:
                 queues = "download,preprocess,status"
 

@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, R
 from fastapi.middleware.cors import CORSMiddleware
 from celery import Celery
 from celery.result import AsyncResult
+from kombu import Queue
 import os
 import time
 import random
@@ -66,7 +67,8 @@ async def v1_generate(
         kwargs={
             "callback_url": request.callback_url,
             "correlation_id": getattr(http_request.state, "correlation_id", None),
-        }
+        },
+        queue="generate",
     )
     
     created_job = redis_store.get_job(job_id)
@@ -156,6 +158,24 @@ celery = Celery(
     backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 )
 
+celery.conf.task_queues = (
+    Queue("download"),
+    Queue("preprocess"),
+    Queue("generate"),
+    Queue("upload"),
+    Queue("status"),
+)
+
+celery.conf.task_routes = {
+    "worker.process_job": {"queue": "generate"},
+    "tasks.download_input_image": {"queue": "download"},
+    "tasks.preprocess_image": {"queue": "preprocess"},
+    "tasks.generate_images": {"queue": "generate"},
+    "tasks.upload_results": {"queue": "upload"},
+    "tasks.update_job_status": {"queue": "status"},
+}
+celery.conf.task_default_queue = "generate"
+
 @app.get("/")
 def root():
     return {"status": "running"}
@@ -223,7 +243,8 @@ async def generate_image(
             kwargs={
                 "callback_url": request.callback_url,
                 "correlation_id": getattr(http_request.state, "correlation_id", None),
-            }
+            },
+            queue="generate",
         )
         
         created_job = redis_store.get_job(job_id)
