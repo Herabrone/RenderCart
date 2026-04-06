@@ -34,8 +34,11 @@ class R2Storage:
                 ContentType='image/png'
             )
             
-            # Generate public URL
-            public_url = f"{os.getenv('R2_ENDPOINT', '').rstrip('/')}/{self.bucket_name}/{path.lstrip('/')}"
-            return public_url
+            presigned_url = self.s3.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self.bucket_name, 'Key': path.lstrip('/')},
+                ExpiresIn=3600,
+            )
+            return presigned_url
         except Exception as e:
             raise Exception(f"Failed to upload image to R2: {str(e)}")

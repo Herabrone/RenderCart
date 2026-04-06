@@ -3,6 +3,9 @@
 
 set -e
 
+MAX_RETRIES=10
+RETRY_DELAY=3
+
 # Parse command-line arguments
 WORKERS_ONLY=false
 LOCAL_MODE=false

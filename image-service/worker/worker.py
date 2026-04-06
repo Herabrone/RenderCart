@@ -14,7 +14,7 @@ import requests
 import torch
 import boto3
 from celery import Celery, signature
-from celery.exceptions import Ignore, Retry
+from celery.exceptions import Ignore
 from diffusers import StableDiffusionXLImg2ImgPipeline
 from kombu import Queue
 from PIL import Image
@@ -168,7 +168,7 @@ def download_input_image(job_id: str, image_url: str) -> str:
         Path to temporary image file
         
     Raises:
-        Retry: If download fails (retries 3 times)
+        requests.RequestException: If download fails
     """
     try:
         update_job_status(job_id, "processing", progress=10, step="download")
@@ -189,7 +189,7 @@ def download_input_image(job_id: str, image_url: str) -> str:
         error_msg = f"Failed to download image: {str(e)}"
         logger.error("Download failed", extra={"job_id": job_id, "error": error_msg})
         update_job_status(job_id, "failed", error=error_msg)
-        raise Retry(exc=e, countdown=5)
+        raise
 
 
 def preprocess_image(job_id: str, image_path: str, style: str) -> Dict[str, Any]:
@@ -483,9 +483,9 @@ def process_job(
         )
         return result
 
-    except Retry as e:
-        logger.warning("Retrying job", extra={"job_id": job_id, "countdown": e.countdown})
-        raise self.retry(exc=e, countdown=e.countdown)
+    except requests.RequestException as e:
+        logger.warning("Retrying job after download failure", extra={"job_id": job_id})
+        raise self.retry(exc=e, countdown=5, max_retries=3)
     except Ignore:
         logger.error("Job ignored due to error", extra={"job_id": job_id})
         # Notify of failure if callback is set
