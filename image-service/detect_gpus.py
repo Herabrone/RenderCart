@@ -220,7 +220,7 @@ class GPUPlanner:
             return [
                 "celery",
                 "-A",
-                "worker",
+                "worker.worker",
                 "worker",
                 "--loglevel=info",
                 "--concurrency=1",

@@ -4,9 +4,6 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import torch
-from diffusers import StableDiffusionXLImg2ImgPipeline
-
 from config import settings, resolve_model_registry
 
 logger = logging.getLogger(__name__)
@@ -37,7 +34,10 @@ def _resolve_model_path(model_entry: Dict[str, Any]) -> Path:
     return path
 
 
-def load_pipeline(model_id: Optional[str] = None) -> StableDiffusionXLImg2ImgPipeline:
+def load_pipeline(model_id: Optional[str] = None):
+    import torch
+    from diffusers import StableDiffusionXLImg2ImgPipeline
+
     model_entry = get_model_entry(model_id)
     logger.info("Loading generation model", extra={"model_id": model_entry.get("id"), "source": model_entry.get("source")})
 
@@ -80,5 +80,5 @@ def load_pipeline(model_id: Optional[str] = None) -> StableDiffusionXLImg2ImgPip
     return pipeline
 
 
-def get_default_pipeline() -> StableDiffusionXLImg2ImgPipeline:
+def get_default_pipeline():
     return load_pipeline(DEFAULT_MODEL_ID)
