@@ -107,11 +107,11 @@ def get_sdxl_pipeline() -> StableDiffusionXLImg2ImgPipeline:
         
         # Memory optimizations for 12GB VRAM
         _sdxl_pipeline.enable_model_cpu_offload()
-        _sdxl_pipeline.enable_xformers_memory_efficient_attention()
+        _sdxl_pipeline.enable_attention_slicing()
         _sdxl_pipeline.enable_vae_slicing()
         _sdxl_pipeline.enable_vae_tiling()
         
-        logger.info("SDXL pipeline loaded with CPU offloading and xformers")
+        logger.info("SDXL pipeline loaded with CPU offloading")
     return _sdxl_pipeline
 
 
@@ -281,8 +281,8 @@ def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, nu
         # Get pipeline
         pipeline = get_sdxl_pipeline()
         
-        # Generate images
-        generator = torch.Generator(device="cuda").manual_seed(random.randint(0, 2**32 - 1))
+        # Generate images (use CPU generator for CPU offload compatibility)
+        generator = torch.Generator(device="cpu").manual_seed(random.randint(0, 2**32 - 1))
         images = pipeline(
             prompt=prompt,
             image=img,
@@ -303,8 +303,9 @@ def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, nu
         
     except Exception as e:
         error_msg = f"Image generation failed: {str(e)}\n{traceback.format_exc()}"
-        logger.error("Generation failed", extra={"job_id": job_id, "error": error_msg})
+        logger.error("Generation failed: %s", error_msg)
         update_job_status(job_id, "failed", error=error_msg)
+        torch.cuda.empty_cache()
         raise Ignore()
 
 
