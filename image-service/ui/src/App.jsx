@@ -41,7 +41,7 @@ function App() {
   };
 
   const handleStatusUpdate = (statusUpdate) => {
-    if (statusUpdate?.batchId) {
+    if (statusUpdate?.batchId || statusUpdate?.batch_id) {
       setBatchStatus(statusUpdate);
     } else {
       setJobStatus(statusUpdate);

@@ -88,6 +88,16 @@ class BatchResponse(BaseModel):
     items: List[BatchItemSummary]
 
 
+class BatchRetryRequest(BaseModel):
+    keep_item_labels: bool = True
+
+
+class BatchRetryResponse(BaseModel):
+    batch_id: str
+    retry_count: int
+    requeued_items: List[Dict[str, str]]
+
+
 class JobResponse(BaseModel):
     """Response model for job status"""
     job_id: str

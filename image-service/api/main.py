@@ -20,6 +20,7 @@ from config import settings
 from db import init_db
 from models import (
     BatchGenerateRequest,
+    BatchRetryRequest,
     BatchResponse,
     GenerateRequest,
     JobResponse,
@@ -277,6 +278,7 @@ def build_batch_response(batch: BatchJob, jobs: List[Job]) -> dict:
             "progress": job.progress or 0,
             "error": job.error,
             "output_urls": [asset.asset_url for asset in job.assets if not asset.is_deleted],
+            "batch_id": batch.batch_id,
         })
 
     return {
@@ -291,6 +293,107 @@ def build_batch_response(batch: BatchJob, jobs: List[Job]) -> dict:
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "updated_at": datetime.utcnow().isoformat(),
         "items": items,
+    }
+
+
+def retry_failed_batch_jobs(
+    db: Session,
+    batch: BatchJob,
+    failed_jobs: List[Job],
+    http_request: Request,
+    keep_item_labels: bool,
+) -> List[dict]:
+    requeued_items = []
+    for job in failed_jobs:
+        new_job_id = f"job_{batch.business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
+        child_request = GenerateRequest(
+            image_url=job.image_url,
+            prompt=job.prompt or batch.prompt,
+            preset_id=job.preset_id or batch.preset_id,
+            use_case=UseCase(job.use_case) if job.use_case else UseCase(batch.use_case),
+            product_category=ProductCategory(job.product_category) if job.product_category else ProductCategory(batch.product_category),
+            brand_style=job.brand_style or batch.brand_style,
+            output_format=OutputFormat(job.output_format) if job.output_format else OutputFormat(batch.output_format),
+            mode=GenerationMode(job.mode) if job.mode else GenerationMode(batch.mode),
+            num_outputs=job.num_outputs or 1,
+            callback_url=job.callback_url,
+            metadata=job.job_metadata,
+        )
+        redis_store.create_job(
+            new_job_id,
+            batch.business_id,
+            child_request,
+            batch_id=batch.batch_id,
+            item_index=job.item_index,
+            item_label=job.item_label if keep_item_labels else None,
+            input_file_name=job.input_file_name,
+            original_image_url=job.original_image_url,
+        )
+        try:
+            create_job_record(
+                db,
+                new_job_id,
+                batch.business_id,
+                child_request,
+                batch_id=batch.batch_id,
+                item_index=job.item_index,
+                item_label=job.item_label if keep_item_labels else None,
+                input_file_name=job.input_file_name,
+                original_image_url=job.original_image_url,
+            )
+        except Exception:
+            logger.warning("Could not persist retried batch job record to database", exc_info=True)
+
+        celery.send_task(
+            "worker.process_job",
+            args=[new_job_id, child_request.image_url, child_request.prompt, batch.business_id, child_request.num_outputs],
+            kwargs={
+                "preset_id": child_request.preset_id,
+                "use_case": child_request.use_case.value,
+                "product_category": child_request.product_category.value,
+                "brand_style": child_request.brand_style,
+                "output_format": child_request.output_format.value,
+                "mode": child_request.mode.value,
+                "callback_url": child_request.callback_url,
+                "metadata": child_request.metadata or {},
+                "correlation_id": getattr(http_request.state, "correlation_id", None),
+            },
+            queue="generate",
+        )
+
+        requeued_items.append({
+            "item_index": job.item_index,
+            "old_job_id": job.job_id,
+            "new_job_id": new_job_id,
+            "label": job.item_label,
+        })
+
+    batch.updated_at = datetime.utcnow()
+    db.commit()
+    return requeued_items
+
+
+@app.post("/batch/{batch_id}/retry-failed")
+async def retry_failed_batch(
+    batch_id: str,
+    request: BatchRetryRequest,
+    http_request: Request,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+) -> dict:
+    batch = db.query(BatchJob).filter(BatchJob.batch_id == batch_id, BatchJob.business_id == business_id).first()
+    if not batch:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
+
+    failed_jobs = db.query(Job).filter(Job.batch_id == batch_id, Job.status == JobStatus.FAILED.value).all()
+    if not failed_jobs:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No failed items found for this batch")
+
+    requeued_items = retry_failed_batch_jobs(db, batch, failed_jobs, http_request, request.keep_item_labels)
+    return {
+        "batch_id": batch.batch_id,
+        "retry_count": len(requeued_items),
+        "requeued_items": requeued_items,
     }
 
 
