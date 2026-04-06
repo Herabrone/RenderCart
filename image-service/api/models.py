@@ -29,12 +29,63 @@ class GenerateRequest(BaseModel):
             raise ValueError("num_outputs must be between 1 and 4")
 
 
+class BatchItem(BaseModel):
+    image_url: str
+    label: Optional[str] = None
+    input_file_name: Optional[str] = None
+
+
+class BatchGenerateRequest(BaseModel):
+    items: List[BatchItem]
+    prompt: str
+    preset_id: str = settings.default_preset_id
+    use_case: UseCase = UseCase.MAIN_PRODUCT_IMAGE
+    product_category: ProductCategory = ProductCategory.GENERAL
+    brand_style: Optional[str] = None
+    output_format: OutputFormat = OutputFormat.PRODUCT_IMAGE
+    mode: GenerationMode = GenerationMode.PRODUCTION
+    num_outputs: int = 1
+    callback_url: Optional[str] = None
+    metadata: Optional[Dict[str, str]] = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if len(self.items) < 1:
+            raise ValueError("Batch must contain at least one item")
+        if not 1 <= self.num_outputs <= 4:
+            raise ValueError("num_outputs must be between 1 and 4")
+
+
 class JobStatus(str, Enum):
     """Job status enumeration"""
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class BatchItemSummary(BaseModel):
+    item_index: int
+    label: Optional[str] = None
+    job_id: str
+    status: JobStatus
+    progress: int
+    error: Optional[str] = None
+    output_urls: Optional[List[str]] = None
+
+
+class BatchResponse(BaseModel):
+    batch_id: str
+    business_id: str
+    status: JobStatus
+    total_items: int
+    completed_items: int
+    failed_items: int
+    pending_items: int
+    progress: int
+    created_at: datetime
+    updated_at: datetime
+    items: List[BatchItemSummary]
 
 
 class JobResponse(BaseModel):
@@ -56,6 +107,11 @@ class JobResponse(BaseModel):
     metadata: Optional[Dict[str, str]] = None
     actual_model: Optional[str] = None
     inference_config_used: Optional[Dict[str, Any]] = None
+    batch_id: Optional[str] = None
+    item_index: Optional[int] = None
+    item_label: Optional[str] = None
+    input_file_name: Optional[str] = None
+    original_image_url: Optional[str] = None
     output_urls: Optional[List[str]] = None
     result_urls: Optional[List[str]] = None
     progress: Optional[int] = None
@@ -74,11 +130,16 @@ class RedisJobStore:
             decode_responses=True,
         )
 
-    def create_job(self, job_id: str, business_id: str, request: GenerateRequest) -> None:
+    def create_job(self, job_id: str, business_id: str, request: GenerateRequest, batch_id: Optional[str] = None, item_index: Optional[int] = None, item_label: Optional[str] = None, input_file_name: Optional[str] = None, original_image_url: Optional[str] = None) -> None:
         """Create a new job in Redis"""
         key = f"job:{job_id}"
         self.redis.hset(key, mapping={
             "business_id": business_id,
+            "batch_id": batch_id or "",
+            "item_index": str(item_index) if item_index is not None else "",
+            "item_label": item_label or "",
+            "input_file_name": input_file_name or "",
+            "original_image_url": original_image_url or "",
             "status": JobStatus.PENDING.value,
             "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat(),
@@ -145,6 +206,11 @@ class RedisJobStore:
             metadata=metadata,
             actual_model=data.get("actual_model") if data.get("actual_model") else None,
             inference_config_used=inference_config_used,
+            batch_id=data.get("batch_id") or None,
+            item_index=int(data["item_index"]) if data.get("item_index") else None,
+            item_label=data.get("item_label") if data.get("item_label") else None,
+            input_file_name=data.get("input_file_name") if data.get("input_file_name") else None,
+            original_image_url=data.get("original_image_url") if data.get("original_image_url") else None,
             output_urls=output_urls or None,
             result_urls=result_urls or None,
             progress=int(data["progress"]) if data.get("progress") else None,

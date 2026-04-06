@@ -2,9 +2,10 @@ import ImageUpload from './ImageUpload';
 import GenerateForm from './GenerateForm';
 
 const LeftPanel = ({
-  uploadedImage,
+  uploadedImages,
   onImageUpload,
   onJobCreated,
+  onBatchCreated,
   onStatusChange,
 }) => {
   return (
@@ -17,15 +18,16 @@ const LeftPanel = ({
         </p>
 
         <div className="panel-section">
-          <div className="panel-subtitle">Upload product image</div>
+          <div className="panel-subtitle">Upload product images</div>
           <ImageUpload onImageUpload={onImageUpload} />
         </div>
 
         <div className="panel-section">
           <div className="panel-subtitle">Build your visual brief</div>
           <GenerateForm
-            imageUrl={uploadedImage}
+            uploadedImages={uploadedImages}
             onJobCreated={onJobCreated}
+            onBatchCreated={onBatchCreated}
             onStatusChange={onStatusChange}
           />
         </div>

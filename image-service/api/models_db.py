@@ -24,12 +24,43 @@ class BusinessApiKey(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class BatchJob(Base):
+    __tablename__ = "batch_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    batch_id = Column(String(128), unique=True, nullable=False, index=True)
+    business_id = Column(String(64), nullable=False, index=True)
+    status = Column(String(32), nullable=False)
+    total_items = Column(Integer, nullable=False)
+    completed_items = Column(Integer, nullable=False, default=0)
+    failed_items = Column(Integer, nullable=False, default=0)
+    pending_items = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    metadata = Column(JSON, nullable=True)
+    prompt = Column(Text, nullable=True)
+    preset_id = Column(String(128), nullable=True)
+    use_case = Column(String(64), nullable=True)
+    product_category = Column(String(64), nullable=True)
+    brand_style = Column(String(128), nullable=True)
+    output_format = Column(String(64), nullable=True)
+    mode = Column(String(64), nullable=True)
+    batch_error = Column(Text, nullable=True)
+
+    jobs = relationship("Job", back_populates="batch")
+
+
 class Job(Base):
     __tablename__ = "jobs"
 
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(String(128), unique=True, nullable=False, index=True)
     business_id = Column(String(64), nullable=False, index=True)
+    batch_id = Column(String(128), ForeignKey("batch_jobs.batch_id", ondelete="SET NULL"), nullable=True, index=True)
+    item_index = Column(Integer, nullable=True)
+    item_label = Column(String(128), nullable=True)
+    input_file_name = Column(String(256), nullable=True)
+    original_image_url = Column(String(2048), nullable=True)
     status = Column(String(32), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -50,6 +81,7 @@ class Job(Base):
     step = Column(String(128), nullable=True)
     error = Column(Text, nullable=True)
 
+    batch = relationship("BatchJob", back_populates="jobs")
     assets = relationship("Asset", back_populates="job", cascade="all, delete-orphan")
 
 

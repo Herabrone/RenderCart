@@ -8,7 +8,7 @@ import {
   generationModeOptions,
 } from '../constants/businessOptions';
 
-const GenerateForm = ({ imageUrl, onJobCreated, onStatusChange }) => {
+const GenerateForm = ({ uploadedImages = [], onJobCreated, onBatchCreated, onStatusChange }) => {
   const [prompt, setPrompt] = useState('');
   const [useCase, setUseCase] = useState('main_product_image');
   const [productCategory, setProductCategory] = useState('general');
@@ -24,8 +24,8 @@ const GenerateForm = ({ imageUrl, onJobCreated, onStatusChange }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!imageUrl) {
-      setError('Upload a product image to start generating store visuals.');
+    if (!uploadedImages || uploadedImages.length === 0) {
+      setError('Upload at least one product image to start generating store visuals.');
       return;
     }
 
@@ -37,37 +37,74 @@ const GenerateForm = ({ imageUrl, onJobCreated, onStatusChange }) => {
     setGenerating(true);
     setError(null);
 
+    const isBatch = uploadedImages.length > 1;
+    const payloadBase = {
+      prompt,
+      preset_id: presetId,
+      use_case: useCase,
+      product_category: productCategory,
+      brand_style: brandStyle,
+      output_format: outputFormat,
+      mode,
+      num_outputs: numOutputs,
+      metadata: {
+        source: 'ui',
+      },
+    };
+
     try {
       const apiKey = localStorage.getItem('apiKey');
-      const response = await axios.post(
-        '/api/generate',
-        {
-          image_url: imageUrl,
-          prompt,
-          preset_id: presetId,
-          use_case: useCase,
-          product_category: productCategory,
-          brand_style: brandStyle,
-          output_format: outputFormat,
-          mode,
-          num_outputs: numOutputs,
-          metadata: {
-            source: 'ui',
-          },
-        },
-        {
-          headers: {
-            ...(apiKey && { 'X-API-Key': apiKey }),
-          },
-        }
-      );
+      let response;
 
-      onJobCreated(response.data.job_id);
-      if (onStatusChange) {
-        onStatusChange({ status: 'pending', step: 'queued' });
+      if (isBatch) {
+        response = await axios.post(
+          '/api/batch/generate',
+          {
+            ...payloadBase,
+            items: uploadedImages.map((item) => ({
+              image_url: item.url,
+              label: item.name,
+              input_file_name: item.name,
+            })),
+          },
+          {
+            headers: {
+              ...(apiKey && { 'X-API-Key': apiKey }),
+            },
+          }
+        );
+
+        if (onBatchCreated) {
+          onBatchCreated(response.data.batch_id);
+        }
+
+        if (onStatusChange) {
+          onStatusChange({ status: 'pending', step: 'queued', batchId: response.data.batch_id });
+        }
+      } else {
+        response = await axios.post(
+          '/api/generate',
+          {
+            image_url: uploadedImages[0].url,
+            ...payloadBase,
+          },
+          {
+            headers: {
+              ...(apiKey && { 'X-API-Key': apiKey }),
+            },
+          }
+        );
+
+        if (onJobCreated) {
+          onJobCreated(response.data.job_id);
+        }
+
+        if (onStatusChange) {
+          onStatusChange({ status: 'pending', step: 'queued' });
+        }
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Generation failed. Please try again.');
+      setError(err.response?.data?.detail || err.message || 'Generation failed. Please try again.');
     } finally {
       setGenerating(false);
     }
@@ -171,8 +208,8 @@ const GenerateForm = ({ imageUrl, onJobCreated, onStatusChange }) => {
         </div>
       )}
 
-      <button type="submit" className="generate-button" disabled={generating || !imageUrl}>
-        {generating ? 'Creating images…' : 'Generate product visuals'}
+      <button type="submit" className="generate-button" disabled={generating || !uploadedImages || uploadedImages.length === 0}>
+        {generating ? 'Creating images…' : uploadedImages.length > 1 ? 'Generate batch visuals' : 'Generate product visuals'}
       </button>
 
       {error && <div className="error-message">{error}</div>}

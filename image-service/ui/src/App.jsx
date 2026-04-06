@@ -4,25 +4,36 @@ import Header from './components/Header';
 import LeftPanel from './components/LeftPanel';
 import RightPanel from './components/RightPanel';
 import JobStatus from './components/JobStatus';
+import BatchStatus from './components/BatchStatus';
 import Gallery from './components/Gallery';
 import JobHistory from './components/JobHistory';
 import './App.css';
 
 function App() {
-  const [uploadedImage, setUploadedImage] = useState(null);
+  const [uploadedImages, setUploadedImages] = useState([]);
   const [jobId, setJobId] = useState(null);
+  const [batchId, setBatchId] = useState(null);
   const [generatedImages, setGeneratedImages] = useState([]);
   const [jobStatus, setJobStatus] = useState(null);
+  const [batchStatus, setBatchStatus] = useState(null);
 
-  const handleImageUpload = (imageUrl) => {
-    setUploadedImage(imageUrl);
+  const handleImageUpload = (images) => {
+    setUploadedImages(images);
     setJobId(null);
+    setBatchId(null);
     setGeneratedImages([]);
     setJobStatus(null);
+    setBatchStatus(null);
   };
 
   const handleJobCreated = (newJobId) => {
     setJobId(newJobId);
+    setBatchId(null);
+  };
+
+  const handleBatchCreated = (newBatchId) => {
+    setBatchId(newBatchId);
+    setJobId(null);
   };
 
   const handleImagesGenerated = (images) => {
@@ -30,36 +41,48 @@ function App() {
   };
 
   const handleStatusUpdate = (statusUpdate) => {
-    setJobStatus(statusUpdate);
+    if (statusUpdate?.batchId) {
+      setBatchStatus(statusUpdate);
+    } else {
+      setJobStatus(statusUpdate);
+    }
   };
 
   const homePage = (
     <div className="home-layout">
       <LeftPanel
-        uploadedImage={uploadedImage}
+        uploadedImages={uploadedImages}
         onImageUpload={handleImageUpload}
         onJobCreated={handleJobCreated}
+        onBatchCreated={handleBatchCreated}
         onStatusChange={handleStatusUpdate}
       />
 
       <div className="right-column">
         <div className="status-card">
           <div className="panel-title">Job status</div>
-          {jobId ? (
-            <JobStatus
-              jobId={jobId}
-              onImagesGenerated={handleImagesGenerated}
-              onStatusChange={handleStatusUpdate}
-            />
-          ) : (
+            {batchId ? (
+              <BatchStatus
+                batchId={batchId}
+                onStatusChange={(status) => handleStatusUpdate({ ...status, batchId })}
+              />
+            ) : jobId ? (
+              <JobStatus
+                jobId={jobId}
+                onImagesGenerated={handleImagesGenerated}
+                onStatusChange={handleStatusUpdate}
+              />
+            ) : (
             <div className="status-placeholder">Start a generation to view progress and results.</div>
           )}
         </div>
 
         <RightPanel
-          previewImage={uploadedImage}
+          previewImage={uploadedImages.length === 1 ? uploadedImages[0].url : null}
           generatedImages={generatedImages}
           jobStatus={jobStatus}
+          batchStatus={batchStatus}
+          uploadedImages={uploadedImages}
         />
       </div>
     </div>

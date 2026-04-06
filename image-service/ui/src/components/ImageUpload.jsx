@@ -25,39 +25,41 @@ const ImageUpload = ({ onImageUpload }) => {
   }, []);
 
   const handleFiles = useCallback(async (files) => {
-    const file = files[0];
-    
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
-      setError('Please upload a valid image file (JPEG, PNG, GIF, or WebP)');
-      return;
-    }
-
-    // Validate file size (10MB max)
-    if (file.size > 10 * 1024 * 1024) {
-      setError('File size exceeds 10MB limit');
+    const selectedFiles = Array.from(files);
+    if (selectedFiles.length > 20) {
+      setError('Please upload no more than 20 images at once.');
       return;
     }
 
     setUploading(true);
     setError(null);
-    
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const apiKey = localStorage.getItem('apiKey');
-      const response = await axios.post('/api/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          ...(apiKey && { 'X-API-Key': apiKey })
-        }
-      });
 
-      onImageUpload(response.data.url);
+    try {
+      const uploaded = [];
+      for (const file of selectedFiles) {
+        if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+          throw new Error('Please upload valid image files (JPEG, PNG, GIF, or WebP).');
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error('File size exceeds the 10MB limit.');
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const apiKey = localStorage.getItem('apiKey');
+        const response = await axios.post('/api/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            ...(apiKey && { 'X-API-Key': apiKey }),
+          },
+        });
+
+        uploaded.push({ url: response.data.url, name: file.name });
+      }
+      onImageUpload(uploaded);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Upload failed. Please try again.');
+      setError(err.message || err.response?.data?.detail || 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -94,6 +96,7 @@ const ImageUpload = ({ onImageUpload }) => {
           type="file"
           id="file-upload"
           accept="image/*"
+          multiple
           onChange={handleFileChange}
           disabled={uploading}
         />
@@ -102,7 +105,7 @@ const ImageUpload = ({ onImageUpload }) => {
             <use href="/icons.svg#upload-icon"></use>
           </svg>
           <span className="upload-text">
-            {uploading ? 'Uploading...' : 'Drag & drop image here or click to browse'}
+            {uploading ? 'Uploading...' : 'Drag & drop up to 20 images or click to browse'}
           </span>
         </label>
       </div>

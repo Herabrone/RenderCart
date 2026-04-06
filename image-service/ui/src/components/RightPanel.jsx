@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const RightPanel = ({ previewImage, generatedImages, jobStatus }) => {
+const RightPanel = ({ previewImage, generatedImages, jobStatus, batchStatus, uploadedImages }) => {
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState(false);
 
@@ -70,6 +70,16 @@ const RightPanel = ({ previewImage, generatedImages, jobStatus }) => {
                 </div>
               ))}
             </div>
+          </div>
+        ) : batchStatus ? (
+          <div className="empty-state">
+            <p>Batch submitted with {batchStatus.total_items} items.</p>
+            <p>{batchStatus.completed_items} completed, {batchStatus.pending_items} pending, {batchStatus.failed_items} failed.</p>
+          </div>
+        ) : uploadedImages && uploadedImages.length > 1 ? (
+          <div className="empty-state">
+            <p>{uploadedImages.length} images ready for batch generation.</p>
+            <p>Click Generate to submit the batch.</p>
           </div>
         ) : (
           <div className="empty-state">

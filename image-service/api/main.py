@@ -18,14 +18,21 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from db import init_db
-from models import GenerateRequest, JobResponse, JobStatus, RedisJobStore
+from models import (
+    BatchGenerateRequest,
+    BatchResponse,
+    GenerateRequest,
+    JobResponse,
+    JobStatus,
+    RedisJobStore,
+)
 from auth import APIKeyAuth
 from storage import R2Storage
 from usage import UsageTracker
 from logging_config import setup_logging, generate_correlation_id, set_correlation_id, log_event
 from business_presets import list_output_formats, list_presets
 from api.db import SessionLocal
-from api.models_db import Job, Asset
+from api.models_db import BatchJob, Job, Asset
 
 load_dotenv()
 
@@ -145,6 +152,11 @@ def job_to_dict(job: Job, assets: Optional[List[Asset]] = None) -> dict:
     result = {
         "job_id": job.job_id,
         "status": job.status,
+        "batch_id": job.batch_id,
+        "item_index": job.item_index,
+        "item_label": job.item_label,
+        "input_file_name": job.input_file_name,
+        "original_image_url": job.original_image_url,
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "updated_at": job.updated_at.isoformat() if job.updated_at else None,
         "image_url": job.image_url,
@@ -169,10 +181,25 @@ def job_to_dict(job: Job, assets: Optional[List[Asset]] = None) -> dict:
     return result
 
 
-def create_job_record(db: Session, job_id: str, business_id: str, request: GenerateRequest) -> Job:
+def create_job_record(
+    db: Session,
+    job_id: str,
+    business_id: str,
+    request: GenerateRequest,
+    batch_id: Optional[str] = None,
+    item_index: Optional[int] = None,
+    item_label: Optional[str] = None,
+    input_file_name: Optional[str] = None,
+    original_image_url: Optional[str] = None,
+) -> Job:
     job = Job(
         job_id=job_id,
         business_id=business_id,
+        batch_id=batch_id,
+        item_index=item_index,
+        item_label=item_label,
+        input_file_name=input_file_name,
+        original_image_url=original_image_url,
         status=JobStatus.PENDING.value,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
@@ -194,6 +221,77 @@ def create_job_record(db: Session, job_id: str, business_id: str, request: Gener
     db.commit()
     db.refresh(job)
     return job
+
+
+def create_batch_record(db: Session, batch_id: str, business_id: str, request: BatchGenerateRequest) -> BatchJob:
+    batch = BatchJob(
+        batch_id=batch_id,
+        business_id=business_id,
+        status=JobStatus.PENDING.value,
+        total_items=len(request.items),
+        completed_items=0,
+        failed_items=0,
+        pending_items=len(request.items),
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        metadata=request.metadata or {},
+        prompt=request.prompt,
+        preset_id=request.preset_id,
+        use_case=request.use_case.value,
+        product_category=request.product_category.value,
+        brand_style=request.brand_style,
+        output_format=request.output_format.value,
+        mode=request.mode.value,
+    )
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+def compute_batch_status(jobs: List[Job]) -> str:
+    statuses = {job.status for job in jobs}
+    if all(status == JobStatus.COMPLETED.value for status in statuses) and jobs:
+        return JobStatus.COMPLETED.value
+    if any(status in {JobStatus.PENDING.value, JobStatus.PROCESSING.value} for status in statuses):
+        return JobStatus.PROCESSING.value
+    if any(status == JobStatus.FAILED.value for status in statuses):
+        return JobStatus.FAILED.value
+    return JobStatus.PENDING.value
+
+
+def build_batch_response(batch: BatchJob, jobs: List[Job]) -> dict:
+    completed_items = sum(1 for job in jobs if job.status == JobStatus.COMPLETED.value)
+    failed_items = sum(1 for job in jobs if job.status == JobStatus.FAILED.value)
+    pending_items = sum(1 for job in jobs if job.status == JobStatus.PENDING.value)
+    total_items = len(jobs)
+    progress = round(sum(job.progress or 0 for job in jobs) / total_items) if total_items else 0
+
+    items = []
+    for job in sorted(jobs, key=lambda job: (job.item_index if job.item_index is not None else 0, job.created_at)):
+        items.append({
+            "item_index": job.item_index,
+            "label": job.item_label,
+            "job_id": job.job_id,
+            "status": job.status,
+            "progress": job.progress or 0,
+            "error": job.error,
+            "output_urls": [asset.asset_url for asset in job.assets if not asset.is_deleted],
+        })
+
+    return {
+        "batch_id": batch.batch_id,
+        "business_id": batch.business_id,
+        "status": compute_batch_status(jobs),
+        "total_items": total_items,
+        "completed_items": completed_items,
+        "failed_items": failed_items,
+        "pending_items": pending_items,
+        "progress": progress,
+        "created_at": batch.created_at.isoformat() if batch.created_at else None,
+        "updated_at": datetime.utcnow().isoformat(),
+        "items": items,
+    }
 
 
 @app.get("/jobs")
@@ -520,6 +618,148 @@ async def generate_image(
             error=str(e)
         )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/batch/generate", status_code=status.HTTP_202_ACCEPTED)
+async def generate_batch(
+    request: BatchGenerateRequest,
+    http_request: Request,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Create a batch of generation jobs using shared settings."""
+    try:
+        await check_rate_limit(business_id)
+
+        batch_id = f"batch_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
+        batch = create_batch_record(db, batch_id, business_id, request)
+
+        created_items = []
+        for index, item in enumerate(request.items):
+            job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
+            child_request = GenerateRequest(
+                image_url=item.image_url,
+                prompt=request.prompt,
+                preset_id=request.preset_id,
+                use_case=request.use_case,
+                product_category=request.product_category,
+                brand_style=request.brand_style,
+                output_format=request.output_format,
+                mode=request.mode,
+                num_outputs=request.num_outputs,
+                callback_url=request.callback_url,
+                metadata=request.metadata,
+            )
+            redis_store.create_job(
+                job_id,
+                business_id,
+                child_request,
+                batch_id=batch_id,
+                item_index=index,
+                item_label=item.label,
+                input_file_name=item.input_file_name,
+                original_image_url=item.image_url,
+            )
+            try:
+                create_job_record(
+                    db,
+                    job_id,
+                    business_id,
+                    child_request,
+                    batch_id=batch_id,
+                    item_index=index,
+                    item_label=item.label,
+                    input_file_name=item.input_file_name,
+                    original_image_url=item.image_url,
+                )
+            except Exception:
+                logger.warning("Could not persist batch job record to database", exc_info=True)
+
+            log_event(
+                logger,
+                event_type="queued",
+                job_id=job_id,
+                status="pending",
+                message="Batch item queued for processing",
+                business_id=business_id,
+                image_url=item.image_url,
+                prompt=request.prompt,
+                preset_id=request.preset_id,
+                use_case=request.use_case.value,
+                product_category=request.product_category.value,
+                brand_style=request.brand_style,
+                output_format=request.output_format.value,
+                mode=request.mode.value,
+                num_outputs=request.num_outputs,
+                item_index=index,
+            )
+
+            celery.send_task(
+                "worker.process_job",
+                args=[job_id, item.image_url, request.prompt, business_id, request.num_outputs],
+                kwargs={
+                    "preset_id": request.preset_id,
+                    "use_case": request.use_case.value,
+                    "product_category": request.product_category.value,
+                    "brand_style": request.brand_style,
+                    "output_format": request.output_format.value,
+                    "mode": request.mode.value,
+                    "callback_url": request.callback_url,
+                    "metadata": request.metadata or {},
+                    "correlation_id": getattr(http_request.state, "correlation_id", None),
+                },
+                queue="generate",
+            )
+
+            created_items.append({
+                "item_index": index,
+                "label": item.label,
+                "job_id": job_id,
+                "status": JobStatus.PENDING.value,
+            })
+
+        return {
+            "batch_id": batch.batch_id,
+            "business_id": batch.business_id,
+            "status": batch.status,
+            "total_items": batch.total_items,
+            "completed_items": 0,
+            "failed_items": 0,
+            "pending_items": batch.pending_items,
+            "progress": 0,
+            "created_at": batch.created_at.isoformat() if batch.created_at else None,
+            "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
+            "items": created_items,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_event(
+            logger,
+            event_type="failed",
+            job_id=None,
+            status="error",
+            message=f"Batch submission failed: {str(e)}",
+            error=str(e),
+        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/batch/{batch_id}")
+async def get_batch_status(
+    batch_id: str,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+) -> dict:
+    batch = db.query(BatchJob).filter(BatchJob.batch_id == batch_id, BatchJob.business_id == business_id).first()
+    if not batch:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
+
+    jobs = db.query(Job).filter(Job.batch_id == batch_id).all()
+    if not jobs:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No jobs found for this batch")
+
+    return build_batch_response(batch, jobs)
 
 
 @app.get("/presets")
