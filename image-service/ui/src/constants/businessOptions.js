@@ -19,10 +19,14 @@ export const productCategoryOptions = [
 
 export const outputFormatOptions = [
   { value: 'product_image', label: 'Square product image' },
+  { value: 'shopify_storefront', label: 'Shopify storefront' },
+  { value: 'amazon_listing', label: 'Amazon listing' },
   { value: 'product_gallery', label: 'Gallery image' },
   { value: 'collection_banner', label: 'Collection banner' },
   { value: 'sale_promo', label: 'Sale promo creative' },
   { value: 'instagram_ad', label: 'Instagram post' },
+  { value: 'social_square', label: 'Social square' },
+  { value: 'social_portrait', label: 'Social portrait' },
   { value: 'story_creative', label: 'Story / reel' },
 ];
 

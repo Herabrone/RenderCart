@@ -11,6 +11,10 @@ class OutputFormat(str, Enum):
     SALE_PROMO = "sale_promo"
     INSTAGRAM_AD = "instagram_ad"
     STORY_CREATIVE = "story_creative"
+    SHOPIFY_STOREFRONT = "shopify_storefront"
+    AMAZON_LISTING = "amazon_listing"
+    SOCIAL_SQUARE = "social_square"
+    SOCIAL_PORTRAIT = "social_portrait"
 
 
 class GenerationMode(str, Enum):
@@ -70,6 +74,30 @@ OUTPUT_FORMAT_SPECS: Dict[OutputFormat, Dict[str, Any]] = {
     },
     OutputFormat.STORY_CREATIVE: {
         "label": "Story creative",
+        "width": 1080,
+        "height": 1920,
+        "extension": "jpg",
+    },
+    OutputFormat.SHOPIFY_STOREFRONT: {
+        "label": "Shopify storefront",
+        "width": 1200,
+        "height": 1200,
+        "extension": "png",
+    },
+    OutputFormat.AMAZON_LISTING: {
+        "label": "Amazon listing",
+        "width": 1200,
+        "height": 1200,
+        "extension": "png",
+    },
+    OutputFormat.SOCIAL_SQUARE: {
+        "label": "Social square",
+        "width": 1080,
+        "height": 1080,
+        "extension": "jpg",
+    },
+    OutputFormat.SOCIAL_PORTRAIT: {
+        "label": "Social portrait",
         "width": 1080,
         "height": 1920,
         "extension": "jpg",

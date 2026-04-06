@@ -20,3 +20,43 @@ presets:
       strength: 0.7
     output_format: png
     description: "Fallback preset for older SDXL baseline generation."
+  shopify_storefront:
+    id: shopify_storefront
+    display_name: Shopify Storefront
+    prompt_template: "{user_prompt}, {use_case}, {product_category}, {brand_style}, clean white background, sharp product detail, storefront-ready"
+    inference_kwargs:
+      num_inference_steps: 28
+      guidance_scale: 7.0
+      strength: 0.65
+    output_format: shopify_storefront
+    description: "Shopify-ready preset with square, storefront-friendly image formatting."
+  amazon_white_background:
+    id: amazon_white_background
+    display_name: Amazon White Background
+    prompt_template: "{user_prompt}, {use_case}, {product_category}, {brand_style}, pure white background, studio lighting, Amazon compliant product image"
+    inference_kwargs:
+      num_inference_steps: 30
+      guidance_scale: 7.5
+      strength: 0.7
+    output_format: amazon_listing
+    description: "Amazon-style white background preset for compliant product listings."
+  social_square:
+    id: social_square
+    display_name: Social Square
+    prompt_template: "{user_prompt}, {use_case}, {product_category}, {brand_style}, modern social media square format, bold contrast, share-ready"
+    inference_kwargs:
+      num_inference_steps: 26
+      guidance_scale: 6.5
+      strength: 0.6
+    output_format: social_square
+    description: "Social media square preset for Instagram and feed posts."
+  social_portrait:
+    id: social_portrait
+    display_name: Social Portrait
+    prompt_template: "{user_prompt}, {use_case}, {product_category}, {brand_style}, portrait-oriented social format, eye-catching vertical layout"
+    inference_kwargs:
+      num_inference_steps: 26
+      guidance_scale: 6.5
+      strength: 0.6
+    output_format: social_portrait
+    description: "Social portrait preset for stories and vertical marketing creatives."
