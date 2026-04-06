@@ -103,11 +103,15 @@ def get_sdxl_pipeline() -> StableDiffusionXLImg2ImgPipeline:
             "stabilityai/stable-diffusion-xl-base-1.0",
             torch_dtype=torch.float16,
             variant="fp16",
-            safety_checker=None,
-        ).to("cuda")
-        _sdxl_pipeline.enable_attention_slicing()
+        )
+        
+        # Memory optimizations for 12GB VRAM
+        _sdxl_pipeline.enable_model_cpu_offload()
         _sdxl_pipeline.enable_xformers_memory_efficient_attention()
-        logger.info("SDXL pipeline loaded")
+        _sdxl_pipeline.enable_vae_slicing()
+        _sdxl_pipeline.enable_vae_tiling()
+        
+        logger.info("SDXL pipeline loaded with CPU offloading and xformers")
     return _sdxl_pipeline
 
 
