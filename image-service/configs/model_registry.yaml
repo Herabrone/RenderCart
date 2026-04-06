@@ -1,0 +1,21 @@
+default_model: realvisxl_v4
+models:
+  realvisxl_v4:
+    id: realvisxl_v4
+    display_name: RealVisXL V4
+    source: local
+    local_path: ./models/RealVisXL_V4.safetensors
+    pretrained_id: stabilityai/realvisxl-v4
+    torch_dtype: float16
+    variant: fp16
+    production: true
+    description: "Production default model optimized for 12GB GPU runtime."
+  sdxl_base:
+    id: sdxl_base
+    display_name: SDXL Base 1.0
+    source: hf
+    pretrained_id: stabilityai/stable-diffusion-xl-base-1.0
+    torch_dtype: float16
+    variant: fp16
+    fallback: true
+    description: "Developer fallback model for compatibility testing."

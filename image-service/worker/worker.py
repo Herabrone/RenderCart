@@ -22,8 +22,8 @@ from PIL import Image
 from rembg import remove
 
 from logging_config import log_event, setup_logging
-from model_loader import get_default_pipeline
-from presets import apply_style_to_prompt, get_inference_params
+from model_loader import get_default_pipeline, DEFAULT_MODEL_ID
+from business_presets import build_prompt, get_inference_params, get_output_spec
 
 LOGGER = setup_logging()
 logger = logging.getLogger("rendercart.worker")
@@ -186,52 +186,52 @@ def download_input_image(job_id: str, image_url: str) -> str:
         raise
 
 
-def preprocess_image(job_id: str, image_path: str, style: str) -> Dict[str, Any]:
+def preprocess_image(job_id: str, image_path: str, output_spec: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Preprocess image: remove background and resize to 1024x1024.
+    Preprocess image: remove background and resize to the requested output format.
     
     Args:
         job_id: Job ID
         image_path: Path to input image
-        style: Style name for prompt formatting
-        
+        output_spec: Output format specification
+    
     Returns:
-        Dictionary with processed image bytes and style info
-        
+        Dictionary with processed image bytes and output spec
+    
     Raises:
         Ignore: If image processing fails
     """
     try:
         update_job_status(job_id, "processing", progress=40, step="preprocess")
-        
+
         logger.info("Preprocessing image", extra={"job_id": job_id, "image_path": image_path})
-        
+
         # Load image
         with open(image_path, "rb") as f:
             img_data = f.read()
-        
+
         img = Image.open(BytesIO(img_data))
-        
+
         # Remove background
         logger.debug("Removing background", extra={"job_id": job_id})
         img = remove(img)
-        
-        # Convert to RGB and resize
+
+        # Convert to RGB and resize to output aspect ratio
         img = img.convert("RGB")
-        img = img.resize((1024, 1024), Image.LANCZOS)
-        
+        img = img.resize((output_spec["width"], output_spec["height"]), Image.LANCZOS)
+
         # Save processed image to bytes
         output_buffer = BytesIO()
         img.save(output_buffer, format="PNG")
         processed_img_bytes = output_buffer.getvalue()
-        
-        logger.info("Image preprocessed", extra={"job_id": job_id, "size": len(processed_img_bytes)})
-        
+
+        logger.info("Image preprocessed", extra={"job_id": job_id, "size": len(processed_img_bytes), "output_spec": output_spec})
+
         return {
             "image_bytes": processed_img_bytes,
-            "style": style
+            "output_spec": output_spec
         }
-        
+
     except Exception as e:
         error_msg = f"Image preprocessing failed: {str(e)}\n{traceback.format_exc()}"
         logger.error("Preprocessing failed", extra={"job_id": job_id, "error": error_msg})
@@ -239,14 +239,15 @@ def preprocess_image(job_id: str, image_path: str, style: str) -> Dict[str, Any]
         raise Ignore()
 
 
-def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, num_images: int = 1) -> List[bytes]:
+def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, inference_params: Dict[str, Any], num_images: int = 1) -> List[bytes]:
     """
-    Generate images using SDXL img2img.
+    Generate images using the configured pipeline.
     
     Args:
         job_id: Job ID
-        processed_data: Dictionary with image_bytes and style
-        prompt: User prompt with style applied
+        processed_data: Dictionary with image_bytes and output spec
+        prompt: User prompt with business-styled guidance
+        inference_params: Inference parameters resolved from preset and mode
         num_images: Number of images to generate
         
     Returns:
@@ -257,20 +258,12 @@ def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, nu
     """
     try:
         update_job_status(job_id, "processing", progress=70, step="generate")
-        
-        logger.info("Generating images", extra={"job_id": job_id, "num_images": num_images, "prompt": prompt[:100]})
-        
-        # Get inference parameters from style
-        style = processed_data["style"]
-        inference_params = get_inference_params(style)
-        
-        # Load and prepare image
+
+        logger.info("Generating images", extra={"job_id": job_id, "num_images": num_images, "prompt": prompt[:100], "inference_params": inference_params})
+
         img = Image.open(BytesIO(processed_data["image_bytes"]))
-        
-        # Get pipeline
         pipeline = get_sdxl_pipeline()
-        
-        # Generate images (use CPU generator for CPU offload compatibility)
+
         generator = torch.Generator(device="cpu").manual_seed(random.randint(0, 2**32 - 1))
         images = pipeline(
             prompt=prompt,
@@ -279,17 +272,20 @@ def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, nu
             **inference_params,
             generator=generator
         ).images
-        
-        # Convert to bytes
+
+        output_format = processed_data.get("output_spec", {}).get("extension", "png").upper()
+        if output_format == "JPG":
+            output_format = "JPEG"
+
         result_images = []
         for i, img in enumerate(images):
             output_buffer = BytesIO()
-            img.save(output_buffer, format="PNG")
+            img.save(output_buffer, format=output_format)
             result_images.append(output_buffer.getvalue())
-            logger.info("Generated image", extra={"job_id": job_id, "image_number": i+1, "size": len(result_images[-1])})
-        
+            logger.info("Generated image", extra={"job_id": job_id, "image_number": i+1, "size": len(result_images[-1]), "format": output_format})
+
         return result_images
-        
+
     except Exception as e:
         error_msg = f"Image generation failed: {str(e)}\n{traceback.format_exc()}"
         logger.error("Generation failed: %s", error_msg)
@@ -298,7 +294,7 @@ def generate_images(job_id: str, processed_data: Dict[str, Any], prompt: str, nu
         raise Ignore()
 
 
-def upload_results(job_id: str, generated_images: List[bytes], business_id: str) -> Dict[str, Any]:
+def upload_results(job_id: str, generated_images: List[bytes], business_id: str, output_extension: str = "png") -> Dict[str, Any]:
     """
     Upload generated images to R2 storage.
     
@@ -306,6 +302,7 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
         job_id: Job ID
         generated_images: List of image bytes
         business_id: Business ID for storage path
+        output_extension: File extension for uploaded images
         
     Returns:
         Dictionary with R2 URLs
@@ -316,7 +313,7 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
     try:
         update_job_status(job_id, "processing", progress=90, step="upload")
         
-        logger.info("Uploading images", extra={"job_id": job_id, "count": len(generated_images)})
+        logger.info("Uploading images", extra={"job_id": job_id, "count": len(generated_images), "output_extension": output_extension})
 
         endpoint = os.getenv("R2_ENDPOINT")
         access_key = os.getenv("R2_ACCESS_KEY_ID")
@@ -337,13 +334,13 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
 
         r2_urls = []
         for i, img_bytes in enumerate(generated_images):
-            object_key = f"{business_id}/jobs/{job_id}/image_{i+1}.png"
+            object_key = f"{business_id}/jobs/{job_id}/image_{i+1}.{output_extension}"
 
             s3_client.put_object(
                 Bucket=bucket_name,
                 Key=object_key,
                 Body=img_bytes,
-                ContentType="image/png",
+                ContentType="image/png" if output_extension == "png" else "image/jpeg",
             )
 
             url = s3_client.generate_presigned_url(
@@ -366,13 +363,15 @@ def upload_results(job_id: str, generated_images: List[bytes], business_id: str)
         raise Ignore()
 
 
-def finalize_job(job_id: str, upload_result: Dict[str, Any]) -> Dict[str, Any]:
+def finalize_job(job_id: str, upload_result: Dict[str, Any], actual_model: Optional[str] = None, inference_config_used: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Finalize job and update status to completed.
     
     Args:
         job_id: Job ID
         upload_result: Result from upload task
+        actual_model: Model identifier used for generation
+        inference_config_used: Actual inference parameters applied
         
     Returns:
         Final job result
@@ -384,16 +383,18 @@ def finalize_job(job_id: str, upload_result: Dict[str, Any]) -> Dict[str, Any]:
             "image_count": upload_result.get("count", 0),
             "completed_at": datetime.utcnow().isoformat()
         }
-        
+
         update_job_status(
             job_id,
             "completed",
             progress=100,
             step="completed",
             result_urls=result["r2_urls"],
+            actual_model=actual_model,
+            inference_config_used=inference_config_used,
         )
         logger.info("Job completed", extra={"job_id": job_id, "result": result})
-        
+
         return result
         
     except Exception as e:
@@ -409,10 +410,16 @@ def process_job(
     job_id: str,
     image_url: str,
     prompt: str,
-    style: str,
     business_id: str,
     num_outputs: int = 1,
+    preset_id: Optional[str] = None,
+    use_case: Optional[str] = None,
+    product_category: Optional[str] = None,
+    brand_style: Optional[str] = None,
+    output_format: Optional[str] = None,
+    mode: Optional[str] = None,
     callback_url: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
     correlation_id: Optional[str] = None,
 ):
     """
@@ -422,10 +429,16 @@ def process_job(
         job_id: Job ID
         image_url: URL of input image
         prompt: User prompt
-        style: Style name
         business_id: Business ID
         num_outputs: Number of generated images
+        preset_id: Preset identifier for generation
+        use_case: Business use case
+        product_category: Product category
+        brand_style: Brand style descriptor
+        output_format: Desired output format
+        mode: Generation mode (preview/production)
         callback_url: Optional URL to send webhook results
+        metadata: Optional metadata dictionary
     """
     try:
         if correlation_id:
@@ -438,27 +451,40 @@ def process_job(
             status="processing",
             business_id=business_id,
             num_outputs=num_outputs,
+            preset_id=preset_id,
+            use_case=use_case,
+            product_category=product_category,
+            brand_style=brand_style,
+            output_format=output_format,
+            mode=mode,
             correlation_id=correlation_id,
         )
-        
-        # Apply style to prompt
-        styled_prompt = apply_style_to_prompt(prompt, style)
-        logger.debug("Applied style to prompt", extra={"job_id": job_id, "style": style})
+
+        styled_prompt = build_prompt(
+            prompt,
+            preset_id=preset_id,
+            use_case=use_case,
+            product_category=product_category,
+            brand_style=brand_style,
+        )
+        logger.debug("Built business prompt", extra={"job_id": job_id, "prompt": styled_prompt[:120]})
+
+        output_spec = get_output_spec(output_format)
+        inference_params = get_inference_params(preset_id, mode)
 
         image_path = download_input_image(job_id, image_url)
-        processed_data = preprocess_image(job_id, image_path, style)
-        generated_images = generate_images(job_id, processed_data, styled_prompt, num_outputs)
-        upload_result = upload_results(job_id, generated_images, business_id)
-        result = finalize_job(job_id, upload_result)
+        processed_data = preprocess_image(job_id, image_path, output_spec)
+        generated_images = generate_images(job_id, processed_data, styled_prompt, inference_params, num_outputs)
+        upload_result = upload_results(job_id, generated_images, business_id, output_spec.get("extension", "png"))
+        result = finalize_job(job_id, upload_result, actual_model=DEFAULT_MODEL_ID, inference_config_used=inference_params)
 
-        # Send webhook if callback_url is provided
         if callback_url:
             try:
                 logger.info("Sending webhook", extra={"job_id": job_id, "callback_url": callback_url})
                 payload = {
                     "job_id": job_id,
                     "status": "completed",
-                    "images": upload_result
+                    "images": upload_result,
                 }
                 requests.post(callback_url, json=payload, timeout=10)
                 logger.info("Webhook sent successfully", extra={"job_id": job_id})
@@ -485,7 +511,6 @@ def process_job(
         raise self.retry(exc=e, countdown=5, max_retries=3)
     except Ignore:
         logger.error("Job ignored due to error", extra={"job_id": job_id})
-        # Notify of failure if callback is set
         if callback_url:
             try:
                 requests.post(callback_url, json={"job_id": job_id, "status": "failed"}, timeout=10)
@@ -495,7 +520,6 @@ def process_job(
         error_msg = f"Unhandled error in worker: {str(e)}"
         logger.error("Error processing job", extra={"job_id": job_id, "error": error_msg})
         update_job_status(job_id, "failed", error=error_msg)
-        # Notify of failure if callback is set
         if callback_url:
             try:
                 requests.post(callback_url, json={"job_id": job_id, "status": "failed", "error": error_msg}, timeout=10)

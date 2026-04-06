@@ -1,0 +1,22 @@
+default_preset: realvisxl_default
+presets:
+  realvisxl_default:
+    id: realvisxl_default
+    display_name: RealVisXL Production Default
+    prompt_template: "{user_prompt}, {use_case}, {product_category}, {brand_style}, store-ready visuals, crisp detail, bright lighting, brand-friendly"
+    inference_kwargs:
+      num_inference_steps: 28
+      guidance_scale: 7.0
+      strength: 0.65
+    output_format: png
+    description: "Default production preset for RealVisXL-based product imagery."
+  sdxl_fallback:
+    id: sdxl_fallback
+    display_name: SDXL Fallback
+    prompt_template: "{user_prompt}, {use_case}, {product_category}, {brand_style}, professional product photography, clean lighting, high quality"
+    inference_kwargs:
+      num_inference_steps: 30
+      guidance_scale: 7.5
+      strength: 0.7
+    output_format: png
+    description: "Fallback preset for older SDXL baseline generation."

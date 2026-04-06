@@ -1,31 +1,33 @@
 from enum import Enum
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import redis
+import json
 from datetime import datetime
 
 from config import settings
+from business_presets import OutputFormat, GenerationMode, ProductCategory, UseCase
 
-class ImageStyle(str, Enum):
-    """Supported image generation styles"""
-    REALISTIC = "realistic"
-    CARTOON = "cartoon"
-    ANIME = "anime"
-    WATERCOLOR = "watercolor"
-    SKETCH = "sketch"
 
 class GenerateRequest(BaseModel):
-    """Request model for image generation"""
+    """Request model for business-oriented image generation."""
     image_url: str
     prompt: str
-    style: ImageStyle
+    preset_id: str = settings.default_preset_id
+    use_case: UseCase = UseCase.MAIN_PRODUCT_IMAGE
+    product_category: ProductCategory = ProductCategory.GENERAL
+    brand_style: Optional[str] = None
+    output_format: OutputFormat = OutputFormat.PRODUCT_IMAGE
+    mode: GenerationMode = GenerationMode.PRODUCTION
     num_outputs: int = 1
     callback_url: Optional[str] = None
-    
+    metadata: Optional[Dict[str, str]] = None
+
     def __init__(self, **data):
         super().__init__(**data)
         if not 1 <= self.num_outputs <= 4:
             raise ValueError("num_outputs must be between 1 and 4")
+
 
 class JobStatus(str, Enum):
     """Job status enumeration"""
@@ -34,101 +36,160 @@ class JobStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+
 class JobResponse(BaseModel):
     """Response model for job status"""
     job_id: str
     status: JobStatus
     created_at: datetime
     updated_at: datetime
+    image_url: Optional[str] = None
+    prompt: Optional[str] = None
+    preset_id: Optional[str] = None
+    use_case: Optional[UseCase] = None
+    product_category: Optional[ProductCategory] = None
+    brand_style: Optional[str] = None
+    output_format: Optional[OutputFormat] = None
+    mode: Optional[GenerationMode] = None
+    num_outputs: Optional[int] = None
+    callback_url: Optional[str] = None
+    metadata: Optional[Dict[str, str]] = None
+    actual_model: Optional[str] = None
+    inference_config_used: Optional[Dict[str, Any]] = None
     output_urls: Optional[List[str]] = None
     result_urls: Optional[List[str]] = None
     progress: Optional[int] = None
     step: Optional[str] = None
     error: Optional[str] = None
 
+
 class RedisJobStore:
     """Store job metadata in Redis hashes"""
-    
+
     def __init__(self):
         self.redis = redis.Redis(
             host=settings.redis_host,
             port=settings.redis_port,
             password=settings.redis_password,
-            decode_responses=True
+            decode_responses=True,
         )
-    
+
     def create_job(self, job_id: str, business_id: str, request: GenerateRequest) -> None:
         """Create a new job in Redis"""
         key = f"job:{job_id}"
         self.redis.hset(key, mapping={
-            'business_id': business_id,
-            'status': JobStatus.PENDING.value,
-            'created_at': datetime.utcnow().isoformat(),
-            'updated_at': datetime.utcnow().isoformat(),
-            'image_url': request.image_url,
-            'prompt': request.prompt,
-            'style': request.style.value,
-            'num_outputs': str(request.num_outputs),
-            'output_urls': '',
-            'result_urls': '',
-            'progress': '0',
-            'step': '',
-            'error': ''
+            "business_id": business_id,
+            "status": JobStatus.PENDING.value,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+            "image_url": request.image_url,
+            "prompt": request.prompt,
+            "preset_id": request.preset_id,
+            "use_case": request.use_case.value,
+            "product_category": request.product_category.value,
+            "brand_style": request.brand_style or "",
+            "output_format": request.output_format.value,
+            "mode": request.mode.value,
+            "num_outputs": str(request.num_outputs),
+            "callback_url": request.callback_url or "",
+            "metadata": json.dumps(request.metadata or {}),
+            "actual_model": "",
+            "inference_config_used": "",
+            "output_urls": "",
+            "result_urls": "",
+            "progress": "0",
+            "step": "",
+            "error": "",
         })
-    
+
     def get_job(self, job_id: str) -> Optional[JobResponse]:
         """Get job details from Redis"""
         key = f"job:{job_id}"
         data = self.redis.hgetall(key)
-        
+
         if not data:
             return None
-        
-        # Build output_urls for backward compatibility
-        output_urls = None
-        if data.get('output_urls'):
-            output_urls = [url for url in data['output_urls'].split(',') if url]
-        
-        # Build result_urls from new field or fallback to output_urls
-        result_urls = None
-        if data.get('result_urls'):
-            result_urls = [url for url in data['result_urls'].split(',') if url]
-        elif output_urls:
-            result_urls = output_urls
-        
+
+        output_urls = [url for url in data.get("output_urls", "").split(",") if url]
+        result_urls = [url for url in data.get("result_urls", "").split(",") if url] or output_urls
+
+        metadata = {}
+        if data.get("metadata"):
+            try:
+                metadata = json.loads(data["metadata"])
+            except json.JSONDecodeError:
+                metadata = {}
+
+        inference_config_used = None
+        if data.get("inference_config_used"):
+            try:
+                inference_config_used = json.loads(data["inference_config_used"])
+            except json.JSONDecodeError:
+                inference_config_used = None
+
         return JobResponse(
             job_id=job_id,
-            status=JobStatus(data['status']),
-            created_at=datetime.fromisoformat(data['created_at']),
-            updated_at=datetime.fromisoformat(data['updated_at']),
-            output_urls=output_urls,
-            result_urls=result_urls,
-            progress=int(data['progress']) if data.get('progress') else None,
-            step=data['step'] if data.get('step') else None,
-            error=data['error'] if data['error'] else None
+            status=JobStatus(data["status"]),
+            created_at=datetime.fromisoformat(data["created_at"]),
+            updated_at=datetime.fromisoformat(data["updated_at"]),
+            image_url=data.get("image_url"),
+            prompt=data.get("prompt"),
+            preset_id=data.get("preset_id"),
+            use_case=UseCase(data["use_case"]) if data.get("use_case") else None,
+            product_category=ProductCategory(data["product_category"]) if data.get("product_category") else None,
+            brand_style=data.get("brand_style"),
+            output_format=OutputFormat(data["output_format"]) if data.get("output_format") else None,
+            mode=GenerationMode(data["mode"]) if data.get("mode") else None,
+            num_outputs=int(data["num_outputs"]) if data.get("num_outputs") else None,
+            callback_url=data.get("callback_url") if data.get("callback_url") else None,
+            metadata=metadata,
+            actual_model=data.get("actual_model") if data.get("actual_model") else None,
+            inference_config_used=inference_config_used,
+            output_urls=output_urls or None,
+            result_urls=result_urls or None,
+            progress=int(data["progress"]) if data.get("progress") else None,
+            step=data.get("step") if data.get("step") else None,
+            error=data.get("error") if data.get("error") else None,
         )
-    
-    def update_job_status(self, job_id: str, status: JobStatus, output_urls: Optional[List[str]] = None, result_urls: Optional[List[str]] = None, progress: Optional[int] = None, step: Optional[str] = None, error: Optional[str] = None) -> None:
+
+    def update_job_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        output_urls: Optional[List[str]] = None,
+        result_urls: Optional[List[str]] = None,
+        progress: Optional[int] = None,
+        step: Optional[str] = None,
+        error: Optional[str] = None,
+        actual_model: Optional[str] = None,
+        inference_config_used: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """Update job status and metadata"""
         key = f"job:{job_id}"
         update_data = {
-            'status': status.value,
-            'updated_at': datetime.utcnow().isoformat()
+            "status": status.value,
+            "updated_at": datetime.utcnow().isoformat(),
         }
-        
+
         if output_urls is not None:
-            update_data['output_urls'] = ','.join(output_urls)
-        
+            update_data["output_urls"] = ",".join(output_urls)
+
         if result_urls is not None:
-            update_data['result_urls'] = ','.join(result_urls)
-        
+            update_data["result_urls"] = ",".join(result_urls)
+
         if progress is not None:
-            update_data['progress'] = str(progress)
-        
+            update_data["progress"] = str(progress)
+
         if step is not None:
-            update_data['step'] = step
-        
+            update_data["step"] = step
+
         if error is not None:
-            update_data['error'] = error
-        
+            update_data["error"] = error
+
+        if actual_model is not None:
+            update_data["actual_model"] = actual_model
+
+        if inference_config_used is not None:
+            update_data["inference_config_used"] = json.dumps(inference_config_used)
+
         self.redis.hset(key, mapping=update_data)

@@ -18,6 +18,7 @@ from auth import APIKeyAuth
 from storage import R2Storage
 from usage import UsageTracker
 from logging_config import setup_logging, generate_correlation_id, set_correlation_id, log_event
+from business_presets import list_output_formats, list_presets
 
 load_dotenv()
 
@@ -42,10 +43,8 @@ async def v1_generate(
     business_id: str = Depends(APIKeyAuth().verify_api_key)
 ) -> JobResponse:
     """Generate images via API v1 with optional webhook callback."""
-    # Logic is identical for now but partitioned for versioning
     job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
-    
-    # Log job queued event
+
     log_event(
         logger,
         event_type="queued",
@@ -55,24 +54,34 @@ async def v1_generate(
         business_id=business_id,
         image_url=request.image_url,
         prompt=request.prompt,
-        style=request.style.value,
-        num_outputs=request.num_outputs
+        preset_id=request.preset_id,
+        use_case=request.use_case.value,
+        product_category=request.product_category.value,
+        brand_style=request.brand_style,
+        output_format=request.output_format.value,
+        mode=request.mode.value,
+        num_outputs=request.num_outputs,
     )
-    
-    # Store in redis
+
     redis_store.create_job(job_id, business_id, request)
-    
-    # Send to celery
+
     celery.send_task(
         "worker.process_job",
-        args=[job_id, request.image_url, request.prompt, request.style.value, business_id, request.num_outputs],
+        args=[job_id, request.image_url, request.prompt, business_id, request.num_outputs],
         kwargs={
+            "preset_id": request.preset_id,
+            "use_case": request.use_case.value,
+            "product_category": request.product_category.value,
+            "brand_style": request.brand_style,
+            "output_format": request.output_format.value,
+            "mode": request.mode.value,
             "callback_url": request.callback_url,
+            "metadata": request.metadata or {},
             "correlation_id": getattr(http_request.state, "correlation_id", None),
         },
         queue="generate",
     )
-    
+
     created_job = redis_store.get_job(job_id)
     if created_job is None:
         raise HTTPException(status_code=500, detail="Failed to create job record")
@@ -227,14 +236,11 @@ async def generate_image(
 ) -> JobResponse:
     """Generate images from input image and prompt"""
     try:
-        # Check rate limit
         await check_rate_limit(business_id)
-        
-        # Create job record
+
         job_id = f"job_{business_id}_{int(time.time())}_{random.randint(1000, 9999)}"
         redis_store.create_job(job_id, business_id, request)
-        
-        # Log job queued event
+
         log_event(
             logger,
             event_type="queued",
@@ -244,21 +250,32 @@ async def generate_image(
             business_id=business_id,
             image_url=request.image_url,
             prompt=request.prompt,
-            style=request.style.value,
-            num_outputs=request.num_outputs
+            preset_id=request.preset_id,
+            use_case=request.use_case.value,
+            product_category=request.product_category.value,
+            brand_style=request.brand_style,
+            output_format=request.output_format.value,
+            mode=request.mode.value,
+            num_outputs=request.num_outputs,
         )
-        
-        # Send task to Celery
+
         celery.send_task(
             "worker.process_job",
-            args=[job_id, request.image_url, request.prompt, request.style.value, business_id, request.num_outputs],
+            args=[job_id, request.image_url, request.prompt, business_id, request.num_outputs],
             kwargs={
+                "preset_id": request.preset_id,
+                "use_case": request.use_case.value,
+                "product_category": request.product_category.value,
+                "brand_style": request.brand_style,
+                "output_format": request.output_format.value,
+                "mode": request.mode.value,
                 "callback_url": request.callback_url,
+                "metadata": request.metadata or {},
                 "correlation_id": getattr(http_request.state, "correlation_id", None),
             },
             queue="generate",
         )
-        
+
         created_job = redis_store.get_job(job_id)
         if created_job is None:
             raise HTTPException(status_code=500, detail="Failed to create job record")
@@ -275,6 +292,19 @@ async def generate_image(
             error=str(e)
         )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.get("/presets")
+def get_presets() -> dict:
+    """List available generation presets."""
+    return {"presets": list_presets()}
+
+
+@app.get("/output-formats")
+def get_output_formats() -> dict:
+    """List output format presets."""
+    return {"output_formats": list_output_formats()}
+
 
 @app.get("/job/{job_id}")
 async def get_job_status(
