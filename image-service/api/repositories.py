@@ -123,6 +123,7 @@ def list_assets(
     asset_type: Optional[str] = None,
     preset_id: Optional[str] = None,
     output_format: Optional[str] = None,
+    approval_status: Optional[str] = None,
     search: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
@@ -141,6 +142,8 @@ def list_assets(
         query = query.filter(Job.preset_id == preset_id)
     if output_format:
         query = query.filter(Job.output_format == output_format)
+    if approval_status:
+        query = query.filter(Asset.approval_status == approval_status)
     if search:
         query = query.filter(Asset.label.ilike(f"%{search}%"))
     if start_date:

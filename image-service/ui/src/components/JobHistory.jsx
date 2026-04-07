@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { outputFormatOptions } from '../constants/businessOptions';
 import { apiClient, downloadWithAuth } from '../lib/apiClient';
@@ -31,6 +32,7 @@ const JobHistory = () => {
   const [error, setError] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const navigate = useNavigate();
 
   const fetchJobs = useCallback(async (activeFilters) => {
     const response = await apiClient.get('/jobs', {
@@ -366,6 +368,15 @@ const JobHistory = () => {
                 )}
                 <div className="detail-row"><strong>Prompt:</strong> {selectedJob.prompt}</div>
                 <div className="detail-row"><strong>Metadata:</strong> <pre className="metadata-block">{JSON.stringify(selectedJob.metadata || {}, null, 2)}</pre></div>
+                <div className="detail-row">
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => navigate(`/jobs/${selectedJob.job_id}`)}
+                  >
+                    Review outputs
+                  </button>
+                </div>
 
                 {selectedJob.assets && selectedJob.assets.length > 0 ? (
                   <div className="assets-panel">

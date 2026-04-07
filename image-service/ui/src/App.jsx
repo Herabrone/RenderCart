@@ -8,6 +8,7 @@ import JobStatus from './components/JobStatus';
 import BatchStatus from './components/BatchStatus';
 import Gallery from './components/Gallery';
 import JobHistory from './components/JobHistory';
+import JobView from './components/JobView';
 import { clearStoredApiKey, getStoredApiKey, setStoredApiKey } from './lib/apiClient';
 import './App.css';
 
@@ -115,7 +116,9 @@ function App() {
           <Routes>
             <Route path="/" element={homePage} />
             <Route path="/gallery" element={<div className="gallery-page"><Gallery /></div>} />
-            <Route path="/history" element={<div className="history-page"><JobHistory /></div>} />
+          <Route path="/jobs" element={<div className="history-page"><JobHistory /></div>} />
+          <Route path="/jobs/:jobId" element={<div className="job-view-page"><JobView /></div>} />
+          <Route path="/history" element={<div className="history-page"><JobHistory /></div>} />
           </Routes>
         </main>
 

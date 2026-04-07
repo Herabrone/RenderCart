@@ -4,9 +4,10 @@ Approval service for handling asset approval workflow.
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from api.models_db import Asset
+from api.models_db import Asset, Job
 from api.repositories import get_asset_by_id
 
 
@@ -163,15 +164,4 @@ def get_approval_stats(
     Returns:
         Dictionary with approval statistics
     """
-    query = db.query(Asset.approval_status, db.func.count(Asset.id))
-    
-    if business_id:
-        query = query.join(Asset.job).filter(Job.business_id == business_id)
-    
-    query = query.group_by(Asset.approval_status)
-    
-    stats = {}
-    for status, count in query.all():
-        stats[status] = count
-    
-    return stats
+    query = db.query(Asset.approval_status, func.count(Asset.id))
