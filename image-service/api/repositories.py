@@ -116,6 +116,10 @@ def get_job(db: Session, job_id: str, business_id: str) -> Optional[Job]:
     )
 
 
+def get_job_by_id(db: Session, job_pk: int) -> Optional[Job]:
+    return db.query(Job).filter(Job.id == job_pk).first()
+
+
 def list_assets(
     db: Session,
     business_id: str,

@@ -1,125 +1,99 @@
-"""
-Approval API endpoints for asset approval workflow.
-"""
+"""Approval API endpoints for asset review workflows."""
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from business_presets import GenerationMode, OutputFormat, ProductCategory, UseCase
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.auth import get_current_user
-from api.database import get_db
-from api.models import JobStatus
-from api.models_db import Asset, Job
-from api.repositories import (
-    create_job,
-    get_asset_by_id,
-    get_job_by_id,
-    get_job_by_job_id,
-)
+from api.app_state import api_auth
+from api.dependencies import get_db
+from api.models import GenerateRequest
+from api.repositories import get_asset_for_business, get_job_by_id
 from api.serializers import asset_to_dict
 from api.services.approval import (
     ApprovalError,
+    AssetNotFoundError,
     approve_asset,
     get_assets_by_approval_status,
     get_approval_stats,
     reject_asset,
 )
+from api.services.generation import queue_job
 
 router = APIRouter(prefix="/assets", tags=["approval"])
+
+
+class RejectionRequest(BaseModel):
+    reason: Optional[str] = None
 
 
 @router.post("/{asset_id}/approve", status_code=status.HTTP_200_OK)
 def approve_asset_endpoint(
     asset_id: int,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
 ) -> dict:
-    """
-    Approve an asset.
-    
-    Args:
-        asset_id: ID of the asset to approve
-        current_user: Current authenticated user
-        
-    Returns:
-        Approved asset details
-        
-    Raises:
-        HTTPException: If asset not found or already approved/rejected
-    """
+    """Approve an asset owned by the current business."""
     try:
         asset = approve_asset(
             db=db,
             asset_id=asset_id,
-            approver_id=current_user["sub"],
+            approver_id=business_id,
+            business_id=business_id,
         )
         return asset_to_dict(asset)
+    except AssetNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
     except ApprovalError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.post("/{asset_id}/reject", status_code=status.HTTP_200_OK)
 def reject_asset_endpoint(
     asset_id: int,
-    reason: Optional[str] = None,
+    payload: Optional[RejectionRequest] = None,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
 ) -> dict:
-    """
-    Reject an asset.
-    
-    Args:
-        asset_id: ID of the asset to reject
-        reason: Optional reason for rejection
-        current_user: Current authenticated user
-        
-    Returns:
-        Rejected asset details
-        
-    Raises:
-        HTTPException: If asset not found or already approved/rejected
-    """
+    """Reject an asset owned by the current business."""
     try:
         asset = reject_asset(
             db=db,
             asset_id=asset_id,
-            rejecter_id=current_user["sub"],
-            reason=reason,
+            rejecter_id=business_id,
+            business_id=business_id,
+            reason=payload.reason if payload else None,
         )
         return asset_to_dict(asset)
+    except AssetNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
     except ApprovalError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
 
 @router.get("/approval-status", status_code=status.HTTP_200_OK)
 def get_assets_by_status(
     status: str,
-    business_id: Optional[str] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
 ) -> dict:
-    """
-    Get assets by approval status.
-    
-    Args:
-        status: Approval status to filter by (pending, approved, rejected)
-        business_id: Optional business ID to filter by
-        limit: Maximum number of assets to return
-        offset: Offset for pagination
-        current_user: Current authenticated user
-        
-    Returns:
-        List of assets matching the criteria
-    """
+    """Get assets by approval status for the current business."""
     assets = get_assets_by_approval_status(
         db=db,
         status=status,
@@ -127,7 +101,7 @@ def get_assets_by_status(
         limit=limit,
         offset=offset,
     )
-    
+
     return {
         "assets": [asset_to_dict(asset) for asset in assets],
         "count": len(assets),
@@ -136,22 +110,12 @@ def get_assets_by_status(
 
 @router.get("/approval-stats", status_code=status.HTTP_200_OK)
 def get_approval_statistics(
-    business_id: Optional[str] = None,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
 ) -> dict:
-    """
-    Get approval statistics.
-    
-    Args:
-        business_id: Optional business ID to filter by
-        current_user: Current authenticated user
-        
-    Returns:
-        Approval statistics
-    """
+    """Get approval statistics for the current business."""
     stats = get_approval_stats(db=db, business_id=business_id)
-    
+
     return {
         "stats": stats,
         "total": sum(stats.values()),
@@ -161,75 +125,72 @@ def get_approval_statistics(
 @router.post("/{asset_id}/regenerate", status_code=status.HTTP_201_CREATED)
 def regenerate_asset(
     asset_id: int,
+    http_request: Request,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
 ) -> dict:
-    """
-    Regenerate an asset (create a new job based on the original job).
-    
-    Args:
-        asset_id: ID of the asset to regenerate
-        current_user: Current authenticated user
-        
-    Returns:
-        New job details
-        
-    Raises:
-        HTTPException: If asset not found or job not found
-    """
-    # Get the asset
-    asset = get_asset_by_id(db, asset_id)
+    """Regenerate a variation from an existing asset owned by the current business."""
+    asset = get_asset_for_business(db, asset_id, business_id)
     if not asset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Asset with ID {asset_id} not found",
         )
-    
-    # Get the original job
+
     job = get_job_by_id(db, asset.job_id)
-    if not job:
+    if not job or job.business_id != business_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job with ID {asset.job_id} not found",
         )
-    
-    # Create a new job based on the original job
-    new_job = create_job(
-        db=db,
-        job_id=None,  # Let the system generate a new job ID
-        status=JobStatus.PENDING.value,
+
+    metadata = dict(job.job_metadata or {})
+    metadata["regenerated_from"] = {
+        "source_asset_id": asset.id,
+        "source_job_id": job.job_id,
+        "source_asset_url": asset.asset_url,
+        "requested_at": datetime.utcnow().isoformat(),
+    }
+
+    regenerate_request = GenerateRequest(
+        image_url=asset.asset_url or job.image_url or job.original_image_url,
+        prompt=job.prompt or "",
+        preset_id=job.preset_id,
+        use_case=UseCase(job.use_case) if job.use_case else UseCase.MAIN_PRODUCT_IMAGE,
+        product_category=(
+            ProductCategory(job.product_category)
+            if job.product_category
+            else ProductCategory.GENERAL
+        ),
+        brand_style=job.brand_style,
+        brand_kit_id=job.brand_kit_id,
+        brand_kit_snapshot=job.brand_kit_snapshot,
+        output_format=(
+            OutputFormat(job.output_format)
+            if job.output_format
+            else OutputFormat.PRODUCT_IMAGE
+        ),
+        mode=GenerationMode(job.mode) if job.mode else GenerationMode.PRODUCTION,
+        num_outputs=job.num_outputs or 1,
+        callback_url=job.callback_url,
+        metadata=metadata,
+    )
+
+    new_job_id = queue_job(
+        db,
+        regenerate_request,
+        business_id,
+        http_request,
         batch_id=job.batch_id,
         item_index=job.item_index,
         item_label=job.item_label,
         input_file_name=job.input_file_name,
-        original_image_url=job.original_image_url,
-        image_url=None,
-        prompt=job.prompt,
-        preset_id=job.preset_id,
-        use_case=job.use_case,
-        product_category=job.product_category,
-        brand_style=job.brand_style,
-        brand_kit_id=job.brand_kit_id,
-        brand_kit_snapshot=job.brand_kit_snapshot,
-        output_format=job.output_format,
-        mode=job.mode,
-        num_outputs=job.num_outputs,
-        callback_url=job.callback_url,
-        job_metadata=job.job_metadata,
-        actual_model=job.actual_model,
-        inference_config_used=job.inference_config_used,
-        progress=0,
-        step=None,
-        error=None,
-        business_id=job.business_id,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        original_image_url=asset.asset_url,
     )
-    
-    db.commit()
-    db.refresh(new_job)
-    
+
     return {
         "message": "Asset regeneration initiated",
-        "new_job_id": new_job.job_id,
+        "new_job_id": new_job_id,
+        "source_asset_id": asset.id,
+        "source_job_id": job.job_id,
     }

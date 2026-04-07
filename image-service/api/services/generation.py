@@ -186,7 +186,7 @@ def queue_job(
     db: Session,
     request: GenerateRequest,
     business_id: str,
-    http_request: Request,
+    http_request: Optional[Request] = None,
     *,
     batch_id: Optional[str] = None,
     item_index: Optional[int] = None,
@@ -253,7 +253,7 @@ def queue_job(
         job_id,
         normalized_request,
         business_id,
-        getattr(http_request.state, "correlation_id", None),
+        getattr(getattr(http_request, "state", None), "correlation_id", None),
     )
     return job_id
 

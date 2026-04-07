@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from api.models_db import Asset, Job
-from api.repositories import get_asset_by_id
+from api.repositories import get_asset_for_business
 
 
 class ApprovalError(Exception):
@@ -35,6 +35,7 @@ def approve_asset(
     db: Session,
     asset_id: int,
     approver_id: str,
+    business_id: str,
 ) -> Asset:
     """
     Approve an asset.
@@ -43,6 +44,7 @@ def approve_asset(
         db: Database session
         asset_id: ID of the asset to approve
         approver_id: ID of the user approving the asset
+        business_id: Business ID to enforce ownership
         
     Returns:
         The approved asset
@@ -51,7 +53,7 @@ def approve_asset(
         AssetNotFoundError: If the asset does not exist
         InvalidApprovalStatusError: If the asset is already approved or rejected
     """
-    asset = get_asset_by_id(db, asset_id)
+    asset = get_asset_for_business(db, asset_id, business_id)
     if not asset:
         raise AssetNotFoundError(f"Asset with ID {asset_id} not found")
     
@@ -76,6 +78,7 @@ def reject_asset(
     db: Session,
     asset_id: int,
     rejecter_id: str,
+    business_id: str,
     reason: Optional[str] = None,
 ) -> Asset:
     """
@@ -85,6 +88,7 @@ def reject_asset(
         db: Database session
         asset_id: ID of the asset to reject
         rejecter_id: ID of the user rejecting the asset
+        business_id: Business ID to enforce ownership
         reason: Optional reason for rejection
         
     Returns:
@@ -94,7 +98,7 @@ def reject_asset(
         AssetNotFoundError: If the asset does not exist
         InvalidApprovalStatusError: If the asset is already approved or rejected
     """
-    asset = get_asset_by_id(db, asset_id)
+    asset = get_asset_for_business(db, asset_id, business_id)
     if not asset:
         raise AssetNotFoundError(f"Asset with ID {asset_id} not found")
     
@@ -136,6 +140,9 @@ def get_assets_by_approval_status(
     Returns:
         List of assets matching the criteria
     """
+    if status not in {"pending", "approved", "rejected"}:
+        raise InvalidApprovalStatusError(f"Invalid approval status: {status}")
+
     query = db.query(Asset).filter(Asset.approval_status == status)
     
     if business_id:
