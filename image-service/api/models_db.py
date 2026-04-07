@@ -122,6 +122,13 @@ class Asset(Base):
     rejected_by = Column(String(64), nullable=True)
     rejected_at = Column(DateTime, nullable=True)
 
+    # Shopify Publish fields
+    shopify_product_id = Column(String(128), nullable=True)
+    shopify_media_id = Column(String(128), nullable=True)
+    shopify_publish_status = Column(String(32), nullable=True, index=True)
+    shopify_error_message = Column(Text, nullable=True)
+    shopify_published_at = Column(DateTime, nullable=True)
+
     job = relationship("Job", back_populates="assets")
 
 

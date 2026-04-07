@@ -34,6 +34,11 @@ def asset_to_dict(asset: Asset) -> dict:
         "approved_at": asset.approved_at.isoformat() if asset.approved_at else None,
         "rejected_by": asset.rejected_by,
         "rejected_at": asset.rejected_at.isoformat() if asset.rejected_at else None,
+        "shopify_product_id": asset.shopify_product_id,
+        "shopify_media_id": asset.shopify_media_id,
+        "shopify_publish_status": asset.shopify_publish_status,
+        "shopify_error_message": asset.shopify_error_message,
+        "shopify_published_at": asset.shopify_published_at.isoformat() if asset.shopify_published_at else None,
     }
 
 

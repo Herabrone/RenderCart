@@ -4,9 +4,14 @@ from sqlalchemy.orm import Session
 from api.app_state import api_auth
 from api.config import settings
 from api.dependencies import get_db
-from api.repositories import get_shopify_store, list_shopify_stores
+from api.models import (
+    ShopifyPublishRequest,
+    ShopifyPublishResponse,
+)
+from api.repositories import get_asset_for_business, get_shopify_store, list_shopify_stores
 from api.serializers import shopify_store_to_dict
 from api.services import shopify_catalog, shopify_integration
+from worker.shopify_worker import publish_to_shopify
 
 router = APIRouter(tags=["shopify"])
 
@@ -112,3 +117,69 @@ def get_shopify_products(
         "shop_domain": store.shop_domain,
         "products": products,
     }
+
+
+@router.post("/assets/{asset_id}/publish/shopify", status_code=status.HTTP_202_ACCEPTED)
+def request_shopify_publish(
+    asset_id: int,
+    request: ShopifyPublishRequest,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+):
+    """Submits an async task to publish an approved asset to Shopify."""
+    asset = get_asset_for_business(db, asset_id, business_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    if asset.approval_status != "approved":
+        raise HTTPException(
+            status_code=400,
+            detail="Asset must be approved before publishing to Shopify.",
+        )
+
+    store = get_shopify_store(db, request.store_id, business_id)
+    if not store or store.status != "active":
+        raise HTTPException(
+            status_code=400,
+            detail="Store is missing or disconnected. Reconnect to publish.",
+        )
+
+    asset.shopify_publish_status = "pending"
+    asset.shopify_error_message = None
+    db.commit()
+
+    # Trigger Celery task
+    publish_to_shopify.delay(
+        asset_id,
+        business_id,
+        request.store_id,
+        request.shopify_product_id,
+        request.replace_existing_media,
+    )
+
+    return {
+        "asset_id": asset_id,
+        "shopify_publish_status": asset.shopify_publish_status
+    }
+
+
+@router.get("/assets/{asset_id}/publish-status", status_code=status.HTTP_200_OK)
+def get_shopify_publish_status(
+    asset_id: int,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+):
+    """Retrieve the Shopify publish status of an asset."""
+    asset = get_asset_for_business(db, asset_id, business_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    return {
+        "asset_id": asset_id,
+        "shopify_publish_status": asset.shopify_publish_status,
+        "shopify_product_id": asset.shopify_product_id,
+        "shopify_media_id": asset.shopify_media_id,
+        "shopify_error_message": asset.shopify_error_message,
+        "shopify_published_at": asset.shopify_published_at.isoformat() if asset.shopify_published_at else None,
+    }
+

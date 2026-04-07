@@ -10,10 +10,12 @@ TASK_QUEUES = (
     Queue("generate"),
     Queue("upload"),
     Queue("status"),
+    Queue("shopify_publish"),
 )
 
 TASK_ROUTES = {
     "worker.process_job": {"queue": "generate"},
+    "worker.publish_to_shopify": {"queue": "shopify_publish"},
     "tasks.download_input_image": {"queue": "download"},
     "tasks.preprocess_image": {"queue": "preprocess"},
     "tasks.generate_images": {"queue": "generate"},

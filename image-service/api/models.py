@@ -418,3 +418,15 @@ class ShopifyProductListResponse(BaseModel):
     store_id: int
     shop_domain: str
     products: List[ShopifyProduct]
+
+
+class ShopifyPublishRequest(BaseModel):
+    store_id: int
+    shopify_product_id: str
+    replace_existing_media: bool = False
+
+
+class ShopifyPublishResponse(BaseModel):
+    asset_id: int
+    shopify_publish_status: str
+
