@@ -1,7 +1,43 @@
-const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages }) => {
+import { useState } from 'react';
+
+import PublishModal from './PublishModal';
+import PublishStatus from './PublishStatus';
+
+const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages, stores }) => {
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [selectedAssetForPublish, setSelectedAssetForPublish] = useState(null);
+  const [publishingAssets, setPublishingAssets] = useState({});
+
   const normalizedGeneratedImages = Array.isArray(generatedImages)
     ? generatedImages.map((image) => (typeof image === 'string' ? { asset_url: image, approval_status: 'pending' } : image))
     : [];
+
+  const handlePublishClick = (asset) => {
+    if (!stores || stores.length === 0) {
+      alert('Please connect a Shopify store first');
+      return;
+    }
+    setSelectedAssetForPublish(asset);
+    setShowPublishModal(true);
+  };
+
+  const handlePublishSuccess = () => {
+    if (selectedAssetForPublish) {
+      setPublishingAssets((prev) => ({
+        ...prev,
+        [selectedAssetForPublish.id || selectedAssetForPublish.asset_url]: true,
+      }));
+    }
+    setShowPublishModal(false);
+  };
+
+  const handlePublishComplete = (assetKey) => {
+    setPublishingAssets((prev) => {
+      const updated = { ...prev };
+      delete updated[assetKey];
+      return updated;
+    });
+  };
 
   return (
     <section className="right-panel">
@@ -36,8 +72,12 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
         <div className="panel-title">Asset variants</div>
         {normalizedGeneratedImages && normalizedGeneratedImages.length > 0 ? (
           <div className="result-grid">
-            {normalizedGeneratedImages.map((result, index) => (
-              <div key={result.asset_url || index} className="result-item">
+            {normalizedGeneratedImages.map((result, index) => {
+              const assetKey = result.id || result.asset_url;
+              const isPublishing = publishingAssets[assetKey];
+
+              return (
+                <div key={assetKey || index} className="result-item">
                   <img src={result.asset_url} alt={`Generated ${index + 1}`} className="result-thumb" />
                   <div className="result-actions">
                     <button
@@ -47,6 +87,16 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
                     >
                       Download
                     </button>
+                    {result.approval_status === 'approved' && (
+                      <button
+                        type="button"
+                        className="primary-button primary-button--sm"
+                        onClick={() => handlePublishClick(result)}
+                        disabled={isPublishing}
+                      >
+                        {isPublishing ? 'Publishing...' : 'Publish'}
+                      </button>
+                    )}
                   </div>
                   <div className="result-status">
                     {result.approval_status === 'approved' && <span className="status-badge approved">✓ Approved</span>}
@@ -56,8 +106,18 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
                       <span className="status-badge pending">{result.approval_status || 'Pending'}</span>
                     )}
                   </div>
+
+                  {isPublishing && (
+                    <div className="publish-status-inline">
+                      <PublishStatus
+                        assetId={result.id}
+                        onComplete={() => handlePublishComplete(assetKey)}
+                      />
+                    </div>
+                  )}
                 </div>
-            ))}
+              );
+            })}
           </div>
         ) : batchStatus ? (
           <div className="empty-state">
@@ -79,10 +139,20 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
       <div className="panel-card panel-card--secondary" id="integrations" style={{ marginTop: '20px' }}>
         <div className="panel-title">Integration status</div>
         <p className="panel-copy">
-          API-key based requests, webhook callbacks, and v1 job polling are now first-class parts of the app flow.
-          Store connections should build on top of those real endpoints rather than temporary client-side mocks.
+          {stores && stores.length > 0
+            ? `You have ${stores.length} Shopify store(s) connected. Approved assets can be published directly.`
+            : 'Connect a Shopify store to publish assets. Go to "Shopify Stores" on the left to get started.'}
         </p>
       </div>
+
+      {showPublishModal && selectedAssetForPublish && (
+        <PublishModal
+          asset={selectedAssetForPublish}
+          stores={stores || []}
+          onClose={() => setShowPublishModal(false)}
+          onSuccess={handlePublishSuccess}
+        />
+      )}
     </section>
   );
 };

@@ -1,54 +1,75 @@
-LLM Planning Instructions (drop-in file)
-Objective
+# LLM Planning Instructions (Production)
+
+## Objective
 
 Generate an implementation plan that:
+- Is phase-based
+- Respects dependency ordering (DAG)
+- Breaks work into parallelizable steps
+- Assigns an appropriate LLM per phase
+- Optimizes for cost while maintaining correctness
 
-is phase-based
-respects dependency ordering
-breaks work into parallelizable steps
-assigns an appropriate LLM per phase
-Output Format (MANDATORY)
+---
 
-### Pre-Planning Step
+## Pre-Planning Step (MANDATORY)
 
-1. Evaluate ambiguity level: LOW / MEDIUM / HIGH
+1. Evaluate ambiguity level: **LOW / MEDIUM / HIGH**
 
-2. If HIGH:
-   → Ask clarifying questions (stop execution)
+2. If **HIGH:**
+   → Ask clarifying questions *(stop execution)*
 
-3. If MEDIUM:
+3. If **MEDIUM:**
    → Ask 1–2 critical questions OR proceed with stated assumptions
 
-4. If LOW:
+4. If **LOW:**
    → Proceed directly to planning
 
-The following should be used to decide what LLM to reccommend:
+### If proceeding without clarification:
+- Explicitly list assumptions
+- Continue planning based on those assumptions
+
+---
+
+## Allowed Models
+
+| Model | Tier |
+|---|---|
+| Raptor mini | 0 |
+| Haiku 4.5 | 1 |
+| Gemini 3 Flash | 1 |
+| Sonnet 4.6 | 2 |
+| GPT-5.3 Codex | 2 |
+| Gemini 3.1 Pro | 3 |
+| AUTO | Fallback |
+
+---
+
 ## LLM Selection Rules (STRICT)
 
-### Tier 0 — Raptor mini (GPT-5-mini tuned)
+### Tier 0 — Raptor mini *(GPT-5-mini tuned)*
 
 **Use when:**
 - Pure execution / translation
 - CRUD / boilerplate
-- Copying existing patterns
-- Simple bug fixes
+- Copying patterns
+- Very small bug fixes
 
 **Avoid if:**
 - Any ambiguity exists
-- Multi-file coordination is needed
+- More than 1–2 files involved
 
 ---
 
-### Tier 1 — Haiku / Gemini 3 Flash (fast + cheap)
+### Tier 1 — Haiku 4.5 / Gemini 3 Flash *(fast + cheap)*
 
 **Use when:**
 - Small logic tasks
-- Lightweight multi-file edits
-- Refactoring with clear instructions
+- Lightweight multi-file edits (2–4 files)
+- Simple refactors
 
 **Notes:**
-- Haiku is strong for reliable small coding tasks
-- Gemini Flash is fast and strong for coding relative to cost
+- Haiku = reliable execution
+- Gemini Flash = fastest throughput
 
 **Avoid if:**
 - Architectural decisions required
@@ -56,99 +77,171 @@ The following should be used to decide what LLM to reccommend:
 
 ---
 
-### Tier 2 — Sonnet 4.6 / GTP 5.3 Codex (balanced)
+### Tier 2 — AUTO / Sonnet 4.6 / GPT-5.3 Codex *(balanced)*
 
 **Use when:**
 - Moderate complexity
-- Cross-file changes
-- API design / data flow decisions
+- Cross-file work (3–8 files)
+- API design / data flow
+- Structured implementation
 
 **Notes:**
-- Sonnet = strong coding + cost balance
-- GTP 5.3 Codex = strong generalist + multimodal workflows
+- AUTO = will often choos ethe correct model and has a discount, use this unless the task matches the specic strengths of the other models
+- Sonnet = best cost/performance balance
+- GPT-5.3 Codex = best for fast execution workflows
 
 **Avoid if:**
-- Deep debugging or system redesign needed
+- Deep debugging
+- Unclear requirements
 
 ---
 
-### Tier 3 — Gemini 3.1 Pro (high reasoning)
+### Tier 3 — Gemini 3.1 Pro *(high reasoning)*
 
 **Use when:**
 - Complex bugs
 - Poorly defined requirements
 - Large refactors
 - Multi-system coordination
+- Architecture design
 
 **Notes:**
-- Gemini 3.1 Pro = top-tier agentic + tool workflows
+- Gemini 3.1 Pro = best planning and system design
 
 **Avoid if:**
-- Task is routine (wastes cost)
+- Task is routine *(waste of cost)*
+
+---
+
+### Model Selection Rule (CRITICAL)
+
+- Default to the **cheapest viable model**
+- **NEVER** escalate unless clearly required
+
+#### Special Rules:
+- Use **Sonnet 4.6** for:
+  - Debugging
+  - Fixing incorrect code
+  - Precision-critical changes
+
+- Use **Gemini 3.1 Pro** for:
+  - Planning
+  - Architecture
+  - System-level reasoning
 
 ---
 
 ### AUTO (fallback)
 
 **Use when:**
-- Difficulty is unclear
+- Difficulty cannot be confidently determined
 - Depends on runtime discoveries
 - Planning uncertainty is high
+- Either models in tier 1/2 can accomplish the goal
 
 ---
 
-## Selection Heuristics (FOR THE PLANNER)
-
-The planner MUST evaluate:
+## Selection Heuristics (MANDATORY)
 
 ### 1. Scope
-- 1-5 files → Raptor mini / Haiku  
-- 5-10 files → Haiku / Sonnet  
-- Many(10+) systems → Gemini 3.1 Pro  
+| Files | Model |
+|---|---|
+| 1–4 files | Raptor mini / Haiku |
+| 4–10 files | Haiku / AUTO / Sonnet |
+| 10+ files or multi-system | Sonnet / Gemini 3.1 Pro |
 
 ### 2. Ambiguity
-- Fully specified → cheapest model  
-- Some ambiguity → Sonnet  
-- Vague / unknown → Gemini 3.1 Pro  
+| Level | Model |
+|---|---|
+| Fully specified | Cheapest model |
+| Some ambiguity | AUTO |
+| Vague / unknown | Sonnet / Gemini 3.1 Pro |
 
 ### 3. Failure Cost
-- Low risk → cheapest model  
-- Medium → Sonnet  
-- High (prod-critical, infra, auth) → Gemini 3.1 Pro  
+| Risk | Model |
+|---|---|
+| Low risk | Cheapest model |
+| Medium | Sonnet |
+| High (auth, infra, prod-critical) | Sonnet / Gemini 3.1 Pro |
 
 ### 4. Coupling
-- Isolated → cheapest model  
-- Shared components → Sonnet  
-- Deep coupling → Gemini 3.1 Pro  
+| Coupling | Model |
+|---|---|
+| Isolated | Cheapest model |
+| Shared components | Sonnet |
+| Deep coupling | Sonnet / Gemini 3.1 Pro |
 
 ---
 
-## Hard Rules (IMPORTANT)
+## Execution Constraints (VERY IMPORTANT)
 
-- Default to the **cheapest viable model**
-- NEVER use Gemini 3.1 Pro for:
-  - boilerplate
-  - CRUD
-  - simple endpoints
+Lower-tier models **MUST:**
+- **NOT** redesign architecture
+- **NOT** refactor outside scope
+- **NOT** introduce new abstractions
 
-- NEVER use Raptor mini if:
-  - the step requires any interpretation
+If unclear:
+→ Return an error instead of guessing
 
-- If unsure → use **AUTO**, not Gemini 3.1 Pro
+---
 
+## Request Classification (MANDATORY)
 
-The following is how you should structure the plan:
+Before planning, classify the incoming request and scale phases accordingly. Do not over-engineer small tasks.
 
-# Feature Plan
+### Classification Types
+
+| Type | Description | Phase Target | Step Target |
+|---|---|---|---|
+| **Dev Task** | A single, well-scoped unit of work (bug fix, small addition, config change) | 1–2 phases | 1–4 steps total |
+| **User Story** | A user-facing slice of functionality with clear acceptance criteria | 2–4 phases | 3–8 steps total |
+| **Feature** | A full end-to-end capability spanning multiple stories or systems | 4+ phases | 8+ steps total |
+
+### Classification Rules
+
+1. **Detect from input signals:**
+   - Mentions a single file or function → likely **Dev Task**
+   - Framed as "As a user, I want..." or describes one user interaction → likely **User Story**
+   - Describes a system, capability, or multiple stories → likely **Feature**
+
+2. **When uncertain:** classify conservatively (smaller scope) and state the assumption
+
+3. **State classification at the top of the plan:**
+   ```
+   Request Type: Dev Task | User Story | Feature
+   Estimated Phases: <N>
+   ```
+
+4. **Do not add phases for the sake of structure.** A single-file bug fix needs 1 phase. Do not invent setup, teardown, or "review" phases unless they add real value.
+
+### Phase Scaling Examples
+
+- *"Fix the null check in `userService.ts`"* → Dev Task → 1 phase, 2 steps
+- *"Add password reset flow"* → User Story → 3 phases (backend, frontend, email)
+- *"Build a full notifications system"* → Feature → 5+ phases
+
+---
+
+## Output Format (MANDATORY)
+
+~~~markdown
+# Plan: <Request Title>
+
+**Request Type:** Dev Task | User Story | Feature
+**Estimated Phases:** <N>
+
+---
 
 ## Phase <N>: <Phase Name>
 **Goal:** <clear objective>
 
-## LLM Recommendation: <Raptor mini | Haiku | Sonnet | Opus | Gemini 2.5 Pro | Gemini 3 Flash | Gemini 3.1 Pro | AUTO>
+**LLM Recommendation:** <model from allowed list>
+**Reason:** <1 sentence justification>
 
-**Reason:** <1 sentence justification referencing task complexity, scope, and reasoning depth
+---
 
 ### Steps (parallelizable)
+
 1. <Step title>
    - File(s): <exact paths>
    - Change: <specific modification>
@@ -159,63 +252,55 @@ The following is how you should structure the plan:
    - Change: ...
    - Output: ...
 
+---
+
 ### Acceptance Criteria
-- <testable condition>
-- <testable condition>
 
-Planning Rules
-1. Phase Design
-Phases must be dependency ordered (DAG)
-No circular dependencies
-Each phase should be independently verifiable
-Target size: 30–120 minutes of work
-2. Step Design (VERY IMPORTANT)
+- <binary, testable condition>
+- <binary, testable condition>
+~~~
 
-Steps must:
+---
 
-Modify only 1 logical unit (1 file or tightly related files)
-Be executable without additional reasoning
-Be parallelizable within the phase
-Avoid hidden dependencies between steps
+## Planning Rules
 
-Bad:
+### 1. Phase Design
+- Must form a **DAG** (no circular dependencies)
+- Must be dependency ordered
+- Each phase must be independently verifiable
+- Target: **30–120 minutes** of work
 
-“Implement authentication system”
+### 2. Step Design (CRITICAL)
 
-Good:
+Each step must:
+- Modify only **1 logical unit**
+- Be executable without additional reasoning
+- Be parallelizable within the phase
+- Have **no hidden dependencies**
 
-“Add login endpoint in AuthController.java”
-“Create UserRepository.findByEmail()”
-3. Parallelization Rules
-Steps in the same phase must NOT depend on each other
-If they do → split into another phase
-Assume multiple agents may execute steps simultaneously
+### 3. Parallelization Rules
+- Steps **MUST NOT** depend on each other
+- If they do → split into another phase
+- Assume multiple agents execute steps concurrently
 
-4. LLM Selection Logic
+### 4. Acceptance Criteria Rules
 
 Must be:
+- **Binary** (pass/fail)
+- **Testable** (API, unit test, UI behavior)
+- Directly tied to phase goal
 
-binary (pass/fail)
-testable (unit test, API response, UI change)
-tied to the phase goal
-Example (shortened)
-## Phase 2: User Authentication API
-**Goal:** Implement backend login system
+---
 
-**LLM Recommendation:** Raptor-mini  
-**Reason:** Standard CRUD + predictable patterns
+## Completion Requirement (MANDATORY)
 
-### Steps (parallelizable)
-1. Create login endpoint
-   - File(s): src/controllers/AuthController.java
-   - Change: Add POST /login endpoint
-   - Output: Accepts email/password, returns token
+At the end of every response, you **MUST** include:
 
-2. Add user lookup
-   - File(s): src/repositories/UserRepository.java
-   - Change: Add findByEmail method
-   - Output: Returns user by email
+```
+Next Step:
+Do you want to continue to Phase <N>?
+(If all phases are complete, output: DONE)
 
-### Acceptance Criteria
-- POST /login returns 200 with valid credentials
-- Invalid credentials return 401
+Recommended Model:
+<model for NEXT phase>
+```

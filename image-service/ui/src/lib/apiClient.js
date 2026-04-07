@@ -43,3 +43,25 @@ export const downloadWithAuth = (path, init = {}) => {
   }
   return fetch(`${API_BASE_URL}${path}`, { ...init, headers });
 };
+
+// Shopify Store Management API
+export const listShopifyStores = () => apiClient.get('/shopify/stores');
+
+export const connectShopifyStore = (authCode, shop) =>
+  apiClient.post('/shopify/connect', { authorization_code: authCode, shop });
+
+export const disconnectStore = (storeId) =>
+  apiClient.delete(`/shopify/stores/${storeId}`);
+
+// Shopify Product & Inventory API
+export const fetchProducts = (storeId, search = '', limit = 20) =>
+  apiClient.get(`/shopify/stores/${storeId}/products`, {
+    params: { search, limit },
+  });
+
+// Shopify Publish API
+export const publishAssetToShopify = (assetId, publishRequest) =>
+  apiClient.post(`/assets/${assetId}/publish/shopify`, publishRequest);
+
+export const getPublishStatus = (assetId) =>
+  apiClient.get(`/assets/${assetId}/publish-status`);

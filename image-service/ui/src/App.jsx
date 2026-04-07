@@ -20,6 +20,7 @@ function App() {
   const [batchStatus, setBatchStatus] = useState(null);
   const [apiKeyDraft, setApiKeyDraft] = useState(getStoredApiKey());
   const [hasApiKey, setHasApiKey] = useState(Boolean(getStoredApiKey()));
+  const [stores, setStores] = useState([]);
 
   const handleImageUpload = (images) => {
     setUploadedImages(images);
@@ -70,6 +71,7 @@ function App() {
         onJobCreated={handleJobCreated}
         onBatchCreated={handleBatchCreated}
         onStatusChange={handleStatusUpdate}
+        onStoresUpdated={setStores}
       />
 
       <div className="right-column">
@@ -96,6 +98,7 @@ function App() {
           generatedImages={generatedImages}
           batchStatus={batchStatus}
           uploadedImages={uploadedImages}
+          stores={stores}
         />
       </div>
     </div>
