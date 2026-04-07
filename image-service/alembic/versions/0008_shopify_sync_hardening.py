@@ -21,6 +21,7 @@ def upgrade():
         "shopify_stores",
         ["status"],
         unique=False,
+        if_not_exists=True,
     )
 
     # Track the publish_batch_id so bulk publishes can be grouped and queried.
