@@ -14,7 +14,7 @@ requests==2.31.0
 structlog==23.1.0
 python-json-logger==2.0.7
 SQLAlchemy==2.0.31
-psycopg[binary]==3.5.1
+psycopg[binary]==3.3.3
 PyYAML==6.1
 pydantic-settings==2.0.5
 cryptography==42.0.5
