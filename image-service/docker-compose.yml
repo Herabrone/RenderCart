@@ -58,3 +58,4 @@ services:
 volumes:
   redis_data:
   huggingface_cache:
+  postgres_data:

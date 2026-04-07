@@ -7,7 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api ./api
 COPY configs ./configs
-COPY models ./models
 COPY business_presets.py ./
 COPY config.py ./
 COPY logging_config.py ./
