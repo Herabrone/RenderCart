@@ -44,6 +44,9 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
                     Download
                   </button>
                 </div>
+                <div className="result-status">
+                  <span className="status-badge pending">Pending</span>
+                </div>
               </div>
             ))}
           </div>

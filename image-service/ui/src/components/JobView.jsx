@@ -11,6 +11,7 @@ const JobView = () => {
   const navigate = useNavigate();
   
   const [job, setJob] = useState(null);
+  const [currentAsset, setCurrentAsset] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
@@ -136,33 +137,83 @@ const JobView = () => {
 
         <div className="job-outputs">
           <h2>Generated Assets</h2>
-          <div className="assets-grid">
-            {job.assets.map((asset) => (
-              <div key={asset.id} className="asset-card">
-                <div className="asset-image">
-                  <img src={asset.preview_url} alt={asset.label} />
-                </div>
-                <div className="asset-info">
-                  <h3>{asset.label}</h3>
-                  <div className="asset-meta">
-                    <span>{asset.file_format.toUpperCase()}</span>
-                    <span>{asset.width}×{asset.height}</span>
+          
+          {job.assets.length > 1 ? (
+            <div className="comparison-view">
+              <h3>Side-by-Side Comparison</h3>
+              <div className="comparison-grid">
+                {job.assets.map((asset, index) => (
+                  <div key={asset.id} className="comparison-item">
+                    <div className="asset-image">
+                      <img src={asset.preview_url} alt={asset.label} />
+                    </div>
+                    <div className="asset-info">
+                      <h4>Variant {index + 1}: {asset.label}</h4>
+                      <div className="asset-meta">
+                        <span>{asset.file_format.toUpperCase()}</span>
+                        <span>{asset.width}×{asset.height}</span>
+                      </div>
+                      <div className="asset-status">
+                        <span className={`status-badge ${asset.approval_status}`}>
+                          {asset.approval_status}
+                        </span>
+                      </div>
+                      {asset.approval_status === 'pending' && (
+                        <div className="asset-actions">
+                          <button
+                            className="button primary small"
+                            onClick={() => {
+                              setCurrentAsset(asset);
+                              setShowApprovalModal(true);
+                            }}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="button danger small"
+                            onClick={() => {
+                              setCurrentAsset(asset);
+                              setShowRejectionModal(true);
+                            }}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="asset-status">
-                    <span className={`status-badge ${asset.approval_status}`}>
-                      {asset.approval_status}
-                    </span>
-                  </div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="assets-grid">
+              {job.assets.map((asset) => (
+                <div key={asset.id} className="asset-card">
+                  <div className="asset-image">
+                    <img src={asset.preview_url} alt={asset.label} />
+                  </div>
+                  <div className="asset-info">
+                    <h3>{asset.label}</h3>
+                    <div className="asset-meta">
+                      <span>{asset.file_format.toUpperCase()}</span>
+                      <span>{asset.width}×{asset.height}</span>
+                    </div>
+                    <div className="asset-status">
+                      <span className={`status-badge ${asset.approval_status}`}>
+                        {asset.approval_status}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {showApprovalModal && (
         <ApprovalModal
-          asset={job.assets[0]}
+          asset={currentAsset}
           onClose={() => setShowApprovalModal(false)}
           onSuccess={handleSuccess}
         />
@@ -170,7 +221,7 @@ const JobView = () => {
 
       {showRejectionModal && (
         <RejectionModal
-          asset={job.assets[0]}
+          asset={currentAsset}
           onClose={() => setShowRejectionModal(false)}
           onSuccess={handleSuccess}
         />
@@ -178,7 +229,7 @@ const JobView = () => {
 
       {showRegenerateModal && (
         <RegenerateModal
-          asset={job.assets[0]}
+          asset={currentAsset}
           onClose={() => setShowRegenerateModal(false)}
           onSuccess={handleSuccess}
         />
