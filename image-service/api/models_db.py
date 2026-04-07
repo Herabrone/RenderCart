@@ -113,6 +113,14 @@ class Asset(Base):
     asset_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Approval workflow fields
+    approval_status = Column(String(32), nullable=False, default="pending", index=True)
+    rejection_reason = Column(Text, nullable=True)
+    approved_by = Column(String(64), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    rejected_by = Column(String(64), nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
 
     job = relationship("Job", back_populates="assets")
 

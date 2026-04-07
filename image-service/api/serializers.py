@@ -28,6 +28,12 @@ def asset_to_dict(asset: Asset) -> dict:
         "asset_metadata": asset.asset_metadata,
         "created_at": asset.created_at.isoformat() if asset.created_at else None,
         "updated_at": asset.updated_at.isoformat() if asset.updated_at else None,
+        "approval_status": asset.approval_status,
+        "rejection_reason": asset.rejection_reason,
+        "approved_by": asset.approved_by,
+        "approved_at": asset.approved_at.isoformat() if asset.approved_at else None,
+        "rejected_by": asset.rejected_by,
+        "rejected_at": asset.rejected_at.isoformat() if asset.rejected_at else None,
     }
 
 

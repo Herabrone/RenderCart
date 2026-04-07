@@ -8,12 +8,20 @@ const assetTypeOptions = [
   { value: 'generated_output', label: 'Generated outputs' },
 ];
 
+const approvalStatusOptions = [
+  { value: '', label: 'All statuses' },
+  { value: 'pending', label: 'Pending approval' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
 const emptyFilters = {
   search: '',
   assetType: '',
   outputFormat: '',
   startDate: '',
   endDate: '',
+  approvalStatus: '',
 };
 
 const Gallery = () => {
@@ -35,6 +43,7 @@ const Gallery = () => {
           output_format: activeFilters.outputFormat || undefined,
           start_date: activeFilters.startDate || undefined,
           end_date: activeFilters.endDate || undefined,
+          approval_status: activeFilters.approvalStatus || undefined,
         },
       });
 
@@ -114,6 +123,19 @@ const Gallery = () => {
           </div>
 
           <div className="form-group">
+            <label htmlFor="approvalStatus">Approval status</label>
+            <select
+              id="approvalStatus"
+              value={filters.approvalStatus}
+              onChange={(event) => setFilters((current) => ({ ...current, approvalStatus: event.target.value }))}
+            >
+              {approvalStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
             <label htmlFor="startDate">From</label>
             <input
               id="startDate"
@@ -165,6 +187,11 @@ const Gallery = () => {
                 <div className="asset-metadata">
                   <div className="asset-label">{asset.label || 'Generated asset'}</div>
                   <div className="asset-details">{asset.file_format?.toUpperCase()} · {asset.width}×{asset.height}</div>
+                </div>
+                <div className="asset-status">
+                  {asset.approval_status === 'approved' && <span className="status-badge approved">✓ Approved</span>}
+                  {asset.approval_status === 'rejected' && <span className="status-badge rejected">✗ Rejected</span>}
+                  {asset.approval_status === 'pending' && <span className="status-badge pending">⏳ Pending</span>}
                 </div>
                 <div className="asset-actions">
                   <button type="button" onClick={() => window.open(asset.asset_url, '_blank')} className="link-button">Download</button>
