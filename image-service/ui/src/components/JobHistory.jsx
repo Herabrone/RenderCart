@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 
 import { outputFormatOptions } from '../constants/businessOptions';
 import { apiClient, downloadWithAuth } from '../lib/apiClient';
+import ApprovalModal from './ApprovalModal';
+import RejectionModal from './RejectionModal';
+import RegenerateModal from './RegenerateModal';
 
 const statusOptions = [
   { value: '', label: 'All statuses' },
@@ -32,6 +35,10 @@ const JobHistory = () => {
   const [error, setError] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [showRejectionModal, setShowRejectionModal] = useState(false);
+  const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const navigate = useNavigate();
 
   const fetchJobs = useCallback(async (activeFilters) => {
@@ -106,6 +113,18 @@ const JobHistory = () => {
       setSelectedBatch(response.data);
     } catch (requestError) {
       setError(requestError.response?.data?.detail || 'Failed to load batch details');
+    }
+  };
+
+  const refreshSelectedJob = async () => {
+    if (!selectedJob?.job_id) {
+      return;
+    }
+    try {
+      const response = await apiClient.get(`/jobs/${selectedJob.job_id}`);
+      setSelectedJob(response.data);
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || 'Failed to refresh job details');
     }
   };
 
@@ -394,7 +413,53 @@ const JobHistory = () => {
                             <div className="asset-label">{asset.label || `Output ${asset.output_index}`}</div>
                             <div className="asset-details">{asset.file_format?.toUpperCase()} · {asset.width}×{asset.height}</div>
                           </div>
-                          <button type="button" className="link-button" onClick={() => window.open(asset.asset_url, '_blank')}>Download</button>
+                          <div className="asset-status">
+                            {asset.approval_status === 'approved' && <span className="status-badge approved">✓ Approved</span>}
+                            {asset.approval_status === 'rejected' && <span className="status-badge rejected">✗ Rejected</span>}
+                            {asset.approval_status === 'pending' && <span className="status-badge pending">⏳ Pending</span>}
+                          </div>
+                          {asset.rejection_reason && (
+                            <div className="asset-rejection-reason">
+                              <strong>Rejection reason:</strong> {asset.rejection_reason}
+                            </div>
+                          )}
+                          <div className="asset-actions">
+                            <button type="button" className="link-button" onClick={() => window.open(asset.asset_url, '_blank')}>Download</button>
+                            {asset.approval_status === 'pending' && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="button primary small"
+                                  onClick={() => {
+                                    setSelectedAsset(asset);
+                                    setShowApprovalModal(true);
+                                  }}
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button danger small"
+                                  onClick={() => {
+                                    setSelectedAsset(asset);
+                                    setShowRejectionModal(true);
+                                  }}
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              className="button secondary small"
+                              onClick={() => {
+                                setSelectedAsset(asset);
+                                setShowRegenerateModal(true);
+                              }}
+                            >
+                              Regenerate
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -413,6 +478,33 @@ const JobHistory = () => {
           </div>
         </div>
       </div>
+      {showApprovalModal && selectedAsset && (
+        <ApprovalModal
+          asset={selectedAsset}
+          onClose={() => setShowApprovalModal(false)}
+          onSuccess={() => {
+            refreshSelectedJob();
+          }}
+        />
+      )}
+      {showRejectionModal && selectedAsset && (
+        <RejectionModal
+          asset={selectedAsset}
+          onClose={() => setShowRejectionModal(false)}
+          onSuccess={() => {
+            refreshSelectedJob();
+          }}
+        />
+      )}
+      {showRegenerateModal && selectedAsset && (
+        <RegenerateModal
+          asset={selectedAsset}
+          onClose={() => setShowRegenerateModal(false)}
+          onSuccess={() => {
+            refreshSelectedJob();
+          }}
+        />
+      )}
     </div>
   );
 };

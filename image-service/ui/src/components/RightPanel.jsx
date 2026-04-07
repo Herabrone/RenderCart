@@ -1,4 +1,8 @@
 const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages }) => {
+  const normalizedGeneratedImages = Array.isArray(generatedImages)
+    ? generatedImages.map((image) => (typeof image === 'string' ? { asset_url: image, approval_status: 'pending' } : image))
+    : [];
+
   return (
     <section className="right-panel">
       <div className="panel-card panel-card--preview">
@@ -18,8 +22,8 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
           <div className="preview-card">
             <div className="preview-card-label">After</div>
             <div className="preview-frame">
-              {generatedImages && generatedImages.length > 0 ? (
-                <img src={generatedImages[0]} alt="Generated preview" className="preview-image" />
+              {normalizedGeneratedImages && normalizedGeneratedImages.length > 0 ? (
+                <img src={normalizedGeneratedImages[0].asset_url} alt="Generated preview" className="preview-image" />
               ) : (
                 <div className="preview-empty">Generated results appear here</div>
               )}
@@ -30,24 +34,29 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
 
       <div className="panel-card panel-card--results" style={{ marginTop: '20px' }}>
         <div className="panel-title">Asset variants</div>
-        {generatedImages && generatedImages.length > 0 ? (
+        {normalizedGeneratedImages && normalizedGeneratedImages.length > 0 ? (
           <div className="result-grid">
-            {generatedImages.map((image, index) => (
-              <div key={image} className="result-item">
-                <img src={image} alt={`Generated ${index + 1}`} className="result-thumb" />
-                <div className="result-actions">
-                  <button
-                    type="button"
-                    className="download-button"
-                    onClick={() => window.open(image, '_blank')}
-                  >
-                    Download
-                  </button>
+            {normalizedGeneratedImages.map((result, index) => (
+              <div key={result.asset_url || index} className="result-item">
+                  <img src={result.asset_url} alt={`Generated ${index + 1}`} className="result-thumb" />
+                  <div className="result-actions">
+                    <button
+                      type="button"
+                      className="download-button"
+                      onClick={() => window.open(result.asset_url, '_blank')}
+                    >
+                      Download
+                    </button>
+                  </div>
+                  <div className="result-status">
+                    {result.approval_status === 'approved' && <span className="status-badge approved">✓ Approved</span>}
+                    {result.approval_status === 'rejected' && <span className="status-badge rejected">✗ Rejected</span>}
+                    {result.approval_status === 'pending' && <span className="status-badge pending">⏳ Pending</span>}
+                    {!['approved', 'rejected', 'pending'].includes(result.approval_status) && (
+                      <span className="status-badge pending">{result.approval_status || 'Pending'}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="result-status">
-                  <span className="status-badge pending">Pending</span>
-                </div>
-              </div>
             ))}
           </div>
         ) : batchStatus ? (
