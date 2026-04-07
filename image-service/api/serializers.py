@@ -51,6 +51,18 @@ def brand_kit_to_dict(brand_kit: BrandKit) -> dict:
     }
 
 
+def shopify_store_to_dict(store) -> dict:
+    return {
+        "id": store.id,
+        "business_id": store.business_id,
+        "shop_domain": store.shop_domain,
+        "scopes": store.scopes,
+        "status": store.status,
+        "created_at": store.created_at.isoformat() if store.created_at else None,
+        "updated_at": store.updated_at.isoformat() if store.updated_at else None,
+    }
+
+
 def job_to_dict(job: Job, include_assets: bool = False) -> dict:
     result = {
         "job_id": job.job_id,

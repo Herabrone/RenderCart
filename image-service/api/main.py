@@ -9,6 +9,7 @@ from api.routers.assets import router as assets_router
 from api.routers.brand_kits import router as brand_kits_router
 from api.routers.generation import router as generation_router
 from api.routers.operations import router as operations_router
+from api.routers.shopify import router as shopify_router
 from api.routers.v1 import router as v1_router
 from api.routes.approval import router as approval_router
 from api.usage import normalize_usage_endpoint
@@ -25,7 +26,7 @@ def _include_router_with_aliases(router) -> None:
     app.include_router(router, prefix="/api", include_in_schema=False)
 
 
-for api_router in (operations_router, generation_router, brand_kits_router, assets_router, v1_router, approval_router):
+for api_router in (operations_router, generation_router, brand_kits_router, assets_router, v1_router, approval_router, shopify_router):
     _include_router_with_aliases(api_router)
 
 

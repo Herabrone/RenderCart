@@ -185,3 +185,41 @@ def get_failed_batch_jobs(db: Session, batch_id: str) -> list[Job]:
         .filter(Job.batch_id == batch_id, Job.status == JobStatus.FAILED.value)
         .all()
     )
+
+
+# ---------------------------------------------------------------------------
+# Shopify store repository
+# ---------------------------------------------------------------------------
+
+from api.models_db import ShopifyStore  # noqa: E402 (placed here to avoid circular imports)
+
+
+def list_shopify_stores(db: Session, business_id: str) -> list[ShopifyStore]:
+    return (
+        db.query(ShopifyStore)
+        .filter(ShopifyStore.business_id == business_id)
+        .order_by(ShopifyStore.created_at.desc())
+        .all()
+    )
+
+
+def get_shopify_store(db: Session, store_id: int, business_id: str) -> Optional[ShopifyStore]:
+    return (
+        db.query(ShopifyStore)
+        .filter(ShopifyStore.id == store_id, ShopifyStore.business_id == business_id)
+        .first()
+    )
+
+
+def get_shopify_store_by_domain(
+    db: Session, shop_domain: str, business_id: str
+) -> Optional[ShopifyStore]:
+    return (
+        db.query(ShopifyStore)
+        .filter(
+            ShopifyStore.shop_domain == shop_domain,
+            ShopifyStore.business_id == business_id,
+        )
+        .first()
+    )
+

@@ -375,3 +375,46 @@ class RedisJobStore:
         if inference_config_used is not None:
             update_data["inference_config_used"] = json.dumps(inference_config_used)
         self.redis.hset(key, mapping=update_data)
+
+
+# ---------------------------------------------------------------------------
+# Shopify integration schemas
+# ---------------------------------------------------------------------------
+
+
+class ShopifyOAuthStartRequest(BaseModel):
+    shop_domain: str
+
+
+class ShopifyOAuthStartResponse(BaseModel):
+    oauth_url: str
+    shop_domain: str
+
+
+class ShopifyStoreResponse(BaseModel):
+    id: int
+    business_id: str
+    shop_domain: str
+    scopes: Optional[str] = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ShopifyStoreListResponse(BaseModel):
+    stores: List[ShopifyStoreResponse]
+
+
+class ShopifyProduct(BaseModel):
+    id: str
+    title: str
+    handle: str
+    status: str
+    image_url: Optional[str] = None
+    variant_count: int
+
+
+class ShopifyProductListResponse(BaseModel):
+    store_id: int
+    shop_domain: str
+    products: List[ShopifyProduct]
