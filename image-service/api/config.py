@@ -61,6 +61,7 @@ class Settings(BaseModel):
     database_url: str | None = None
     business_api_keys_config: str = str(PROJECT_ROOT / "api" / "business_keys.json")
     no_auth: bool = False
+    jwt_secret: str = "change-me-in-production"
     cors_allowed_origins: List[str] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:8000"]
     )
@@ -117,6 +118,7 @@ def load_settings() -> Settings:
             "BUSINESS_API_KEYS_CONFIG", str(PROJECT_ROOT / "api" / "business_keys.json")
         ),
         no_auth=_get_bool("NO_AUTH", False),
+        jwt_secret=os.getenv("JWT_SECRET", "change-me-in-production"),
         cors_allowed_origins=_get_list(
             "CORS_ALLOWED_ORIGINS",
             ["http://localhost:5173", "http://localhost:8000"],

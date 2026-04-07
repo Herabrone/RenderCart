@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-const Header = ({ apiKeyDraft, onApiKeyDraftChange, onApiKeySave, onApiKeyClear, hasApiKey }) => {
+const Header = ({ user, onLogout, apiKeyDraft, onApiKeyDraftChange, onApiKeySave, onApiKeyClear, hasApiKey }) => {
   const handleSubmit = (event) => {
     event.preventDefault();
     onApiKeySave();
@@ -20,25 +20,34 @@ const Header = ({ apiKeyDraft, onApiKeyDraftChange, onApiKeySave, onApiKeyClear,
           </nav>
         </div>
 
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <label className="auth-label" htmlFor="api-key-input">API key</label>
-          <input
-            id="api-key-input"
-            className="auth-input"
-            type="password"
-            placeholder="Enter API key"
-            value={apiKeyDraft}
-            onChange={(event) => onApiKeyDraftChange(event.target.value)}
-            autoComplete="off"
-          />
-          <button type="submit" className="primary-button auth-button">Save</button>
-          <button type="button" className="secondary-button auth-button" onClick={onApiKeyClear}>
-            Clear
-          </button>
-          <div className={`auth-status ${hasApiKey ? 'auth-status--ready' : ''}`}>
-            {hasApiKey ? 'Stored' : 'Required'}
+        {user ? (
+          <div className="auth-form user-bar">
+            <span className="user-greeting">{user.display_name || user.email}</span>
+            <button type="button" className="secondary-button auth-button" onClick={onLogout}>
+              Log out
+            </button>
           </div>
-        </form>
+        ) : (
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <label className="auth-label" htmlFor="api-key-input">API key</label>
+            <input
+              id="api-key-input"
+              className="auth-input"
+              type="password"
+              placeholder="Enter API key"
+              value={apiKeyDraft}
+              onChange={(event) => onApiKeyDraftChange(event.target.value)}
+              autoComplete="off"
+            />
+            <button type="submit" className="primary-button auth-button">Save</button>
+            <button type="button" className="secondary-button auth-button" onClick={onApiKeyClear}>
+              Clear
+            </button>
+            <div className={`auth-status ${hasApiKey ? 'auth-status--ready' : ''}`}>
+              {hasApiKey ? 'Stored' : 'Required'}
+            </div>
+          </form>
+        )}
       </div>
     </header>
   );

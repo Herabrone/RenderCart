@@ -14,7 +14,9 @@ COPY logging_config.py ./
 COPY model_loader.py ./
 COPY task_queue.py ./
 COPY url_safety.py ./
+COPY alembic.ini ./
+COPY alembic ./alembic
 
 EXPOSE 8000
 
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port 8000"]

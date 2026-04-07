@@ -18,6 +18,9 @@ services:
       - R2_BUCKET_NAME=${R2_BUCKET_NAME}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - NO_AUTH=${NO_AUTH:-true}
+      - JWT_SECRET=${JWT_SECRET:-rendercart-dev-secret-change-in-prod}
+      - CORS_ALLOWED_ORIGINS=https://rendercart.app,http://localhost:5173,http://localhost:8000
     depends_on:
       - redis
       - postgres

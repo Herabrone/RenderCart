@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
+import AuthPage from './components/AuthPage';
 import Header from './components/Header';
 import LeftPanel from './components/LeftPanel';
 import RightPanel from './components/RightPanel';
@@ -9,7 +10,18 @@ import BatchStatus from './components/BatchStatus';
 import Gallery from './components/Gallery';
 import JobHistory from './components/JobHistory';
 import JobView from './components/JobView';
-import { clearStoredApiKey, getStoredApiKey, setStoredApiKey } from './lib/apiClient';
+import {
+  clearStoredApiKey,
+  clearStoredToken,
+  getStoredApiKey,
+  getStoredToken,
+  getStoredUser,
+  loginUser,
+  registerUser,
+  setStoredApiKey,
+  setStoredToken,
+  setStoredUser,
+} from './lib/apiClient';
 import './App.css';
 
 function App() {
@@ -21,6 +33,26 @@ function App() {
   const [apiKeyDraft, setApiKeyDraft] = useState(getStoredApiKey());
   const [hasApiKey, setHasApiKey] = useState(Boolean(getStoredApiKey()));
   const [stores, setStores] = useState([]);
+
+  const [user, setUser] = useState(getStoredUser());
+  const isLoggedIn = Boolean(getStoredToken()) || Boolean(getStoredApiKey());
+
+  const handleAuth = async ({ isLogin, email, password, displayName }) => {
+    const res = isLogin
+      ? await loginUser(email, password)
+      : await registerUser(email, password, displayName);
+    setStoredToken(res.data.token);
+    setStoredUser(res.data.user);
+    setUser(res.data.user);
+  };
+
+  const handleLogout = () => {
+    clearStoredToken();
+    clearStoredApiKey();
+    setUser(null);
+    setApiKeyDraft('');
+    setHasApiKey(false);
+  };
 
   const handleImageUpload = (images) => {
     setUploadedImages(images);
@@ -104,10 +136,16 @@ function App() {
     </div>
   );
 
+  if (!isLoggedIn) {
+    return <AuthPage onAuth={handleAuth} />;
+  }
+
   return (
     <Router>
       <div className="app">
         <Header
+          user={user}
+          onLogout={handleLogout}
           apiKeyDraft={apiKeyDraft}
           onApiKeyDraftChange={setApiKeyDraft}
           onApiKeySave={handleApiKeySave}
