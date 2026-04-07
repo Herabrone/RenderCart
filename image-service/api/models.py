@@ -430,3 +430,27 @@ class ShopifyPublishResponse(BaseModel):
     asset_id: int
     shopify_publish_status: str
 
+
+class ShopifyBulkPublishItem(BaseModel):
+    asset_id: int
+    shopify_product_id: str
+    replace_existing_media: bool = False
+
+
+class ShopifyBulkPublishRequest(BaseModel):
+    store_id: int
+    items: List[ShopifyBulkPublishItem]
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if len(self.items) < 1:
+            raise ValueError("At least one item is required")
+        if len(self.items) > 50:
+            raise ValueError("Bulk publish is limited to 50 assets per request")
+
+
+class ShopifyBulkPublishResponse(BaseModel):
+    store_id: int
+    queued: List[int]
+    skipped: List[int]
+

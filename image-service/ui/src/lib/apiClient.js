@@ -63,5 +63,8 @@ export const fetchProducts = (storeId, search = '', limit = 20) =>
 export const publishAssetToShopify = (assetId, publishRequest) =>
   apiClient.post(`/assets/${assetId}/publish/shopify`, publishRequest);
 
+export const bulkPublishToShopify = (bulkRequest) =>
+  apiClient.post('/assets/bulk-publish/shopify', bulkRequest);
+
 export const getPublishStatus = (assetId) =>
   apiClient.get(`/assets/${assetId}/publish-status`);

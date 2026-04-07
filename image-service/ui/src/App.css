@@ -696,3 +696,36 @@ input {
 .error-message p:last-child {
   margin-bottom: 0;
 }
+
+/* Results header with bulk action row */
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+/* Asset selection overlay */
+.result-item {
+  position: relative;
+}
+
+.result-item--selected {
+  outline: 2px solid var(--accent);
+  border-radius: 8px;
+}
+
+.result-select-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.result-select-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}

@@ -128,6 +128,7 @@ class Asset(Base):
     shopify_publish_status = Column(String(32), nullable=True, index=True)
     shopify_error_message = Column(Text, nullable=True)
     shopify_published_at = Column(DateTime, nullable=True)
+    shopify_publish_batch_id = Column(String(64), nullable=True)
 
     job = relationship("Job", back_populates="assets")
 

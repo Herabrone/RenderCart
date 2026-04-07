@@ -7,11 +7,13 @@ from api.dependencies import get_db
 from api.models import (
     ShopifyPublishRequest,
     ShopifyPublishResponse,
+    ShopifyBulkPublishRequest,
+    ShopifyBulkPublishResponse,
 )
 from api.repositories import get_asset_for_business, get_shopify_store, list_shopify_stores
 from api.serializers import shopify_store_to_dict
 from api.services import shopify_catalog, shopify_integration
-from worker.shopify_worker import publish_to_shopify
+from worker.shopify_worker import publish_to_shopify, bulk_publish_to_shopify
 
 router = APIRouter(tags=["shopify"])
 
@@ -181,5 +183,60 @@ def get_shopify_publish_status(
         "shopify_media_id": asset.shopify_media_id,
         "shopify_error_message": asset.shopify_error_message,
         "shopify_published_at": asset.shopify_published_at.isoformat() if asset.shopify_published_at else None,
+    }
+
+
+@router.post("/assets/bulk-publish/shopify", status_code=status.HTTP_202_ACCEPTED)
+def bulk_publish_assets_to_shopify(
+    request: ShopifyBulkPublishRequest,
+    business_id: str = Depends(api_auth.verify_api_key_dependency),
+    db: Session = Depends(get_db),
+):
+    """Queues async publish tasks for multiple approved assets to one Shopify store.
+
+    Returns two lists: queued (will be published) and skipped (not approved or
+    not owned by this business).
+    """
+    store = get_shopify_store(db, request.store_id, business_id)
+    if not store or store.status != "active":
+        raise HTTPException(
+            status_code=400,
+            detail="Store is missing or disconnected. Reconnect to publish.",
+        )
+
+    queued: list[int] = []
+    skipped: list[int] = []
+
+    for item in request.items:
+        asset = get_asset_for_business(db, item.asset_id, business_id)
+        if not asset or asset.approval_status != "approved":
+            skipped.append(item.asset_id)
+            continue
+
+        asset.shopify_publish_status = "pending"
+        asset.shopify_error_message = None
+        queued.append(item.asset_id)
+
+    if queued:
+        db.commit()
+        task_items = [
+            {
+                "asset_id": item.asset_id,
+                "store_id": request.store_id,
+                "shopify_product_id": item.shopify_product_id,
+                "replace_existing_media": item.replace_existing_media,
+            }
+            for item in request.items
+            if item.asset_id in queued
+        ]
+        bulk_publish_to_shopify.apply_async(
+            args=[task_items, business_id],
+            queue="shopify_publish",
+        )
+
+    return {
+        "store_id": request.store_id,
+        "queued": queued,
+        "skipped": skipped,
     }
 

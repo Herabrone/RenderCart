@@ -1,16 +1,33 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 
 import PublishModal from './PublishModal';
+import BulkPublishModal from './BulkPublishModal';
 import PublishStatus from './PublishStatus';
 
 const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages, stores }) => {
   const [showPublishModal, setShowPublishModal] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
   const [selectedAssetForPublish, setSelectedAssetForPublish] = useState(null);
   const [publishingAssets, setPublishingAssets] = useState({});
+  const [selectedAssetIds, setSelectedAssetIds] = useState(new Set());
 
   const normalizedGeneratedImages = Array.isArray(generatedImages)
     ? generatedImages.map((image) => (typeof image === 'string' ? { asset_url: image, approval_status: 'pending' } : image))
     : [];
+
+  const approvedAssets = normalizedGeneratedImages.filter((a) => a.approval_status === 'approved' && a.id);
+
+  const toggleAssetSelection = (assetId) => {
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(assetId)) {
+        next.delete(assetId);
+      } else {
+        next.add(assetId);
+      }
+      return next;
+    });
+  };
 
   const handlePublishClick = (asset) => {
     if (!stores || stores.length === 0) {
@@ -31,6 +48,19 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
     setShowPublishModal(false);
   };
 
+  const handleBulkPublishSuccess = (result) => {
+    const queued = new Set(result.queued || []);
+    setPublishingAssets((prev) => {
+      const next = { ...prev };
+      for (const id of queued) {
+        next[id] = true;
+      }
+      return next;
+    });
+    setSelectedAssetIds(new Set());
+    setShowBulkModal(false);
+  };
+
   const handlePublishComplete = (assetKey) => {
     setPublishingAssets((prev) => {
       const updated = { ...prev };
@@ -38,6 +68,8 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
       return updated;
     });
   };
+
+  const selectedBulkAssets = approvedAssets.filter((a) => selectedAssetIds.has(a.id));
 
   return (
     <section className="right-panel">
@@ -69,15 +101,42 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
       </div>
 
       <div className="panel-card panel-card--results" style={{ marginTop: '20px' }}>
-        <div className="panel-title">Asset variants</div>
+        <div className="results-header">
+          <div className="panel-title">Asset variants</div>
+          {selectedAssetIds.size > 0 && (
+            <button
+              type="button"
+              className="primary-button primary-button--sm"
+              onClick={() => setShowBulkModal(true)}
+            >
+              Publish {selectedAssetIds.size} selected
+            </button>
+          )}
+        </div>
+
         {normalizedGeneratedImages && normalizedGeneratedImages.length > 0 ? (
           <div className="result-grid">
             {normalizedGeneratedImages.map((result, index) => {
               const assetKey = result.id || result.asset_url;
               const isPublishing = publishingAssets[assetKey];
+              const isSelected = result.id && selectedAssetIds.has(result.id);
 
               return (
-                <div key={assetKey || index} className="result-item">
+                <div
+                  key={assetKey || index}
+                  className={`result-item${isSelected ? ' result-item--selected' : ''}`}
+                >
+                  {result.approval_status === 'approved' && result.id && (
+                    <label className="result-select-label">
+                      <input
+                        type="checkbox"
+                        className="result-select-checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleAssetSelection(result.id)}
+                        disabled={isPublishing}
+                      />
+                    </label>
+                  )}
                   <img src={result.asset_url} alt={`Generated ${index + 1}`} className="result-thumb" />
                   <div className="result-actions">
                     <button
@@ -99,9 +158,9 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
                     )}
                   </div>
                   <div className="result-status">
-                    {result.approval_status === 'approved' && <span className="status-badge approved">✓ Approved</span>}
-                    {result.approval_status === 'rejected' && <span className="status-badge rejected">✗ Rejected</span>}
-                    {result.approval_status === 'pending' && <span className="status-badge pending">⏳ Pending</span>}
+                    {result.approval_status === 'approved' && <span className="status-badge approved">âœ“ Approved</span>}
+                    {result.approval_status === 'rejected' && <span className="status-badge rejected">âœ— Rejected</span>}
+                    {result.approval_status === 'pending' && <span className="status-badge pending">â³ Pending</span>}
                     {!['approved', 'rejected', 'pending'].includes(result.approval_status) && (
                       <span className="status-badge pending">{result.approval_status || 'Pending'}</span>
                     )}
@@ -151,6 +210,15 @@ const RightPanel = ({ previewImage, generatedImages, batchStatus, uploadedImages
           stores={stores || []}
           onClose={() => setShowPublishModal(false)}
           onSuccess={handlePublishSuccess}
+        />
+      )}
+
+      {showBulkModal && selectedBulkAssets.length > 0 && (
+        <BulkPublishModal
+          assets={selectedBulkAssets}
+          stores={stores || []}
+          onClose={() => setShowBulkModal(false)}
+          onSuccess={handleBulkPublishSuccess}
         />
       )}
     </section>

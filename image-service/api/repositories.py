@@ -223,3 +223,21 @@ def get_shopify_store_by_domain(
         .first()
     )
 
+
+def mark_store_disconnected(
+    db: Session,
+    store_id: int,
+    reason: str = "unknown",
+) -> None:
+    """Sets a store's status to 'disconnected' without deleting the record.
+
+    Called automatically when Shopify returns 401, indicating the token has
+    been revoked or has expired. The record is retained so the merchant can
+    see which store needs reconnection.
+    """
+    store = db.query(ShopifyStore).filter(ShopifyStore.id == store_id).first()
+    if store and store.status == "active":
+        store.status = "disconnected"
+        store.updated_at = datetime.utcnow()
+        db.commit()
+
