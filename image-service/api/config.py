@@ -81,6 +81,16 @@ class Settings(BaseModel):
     max_upload_bytes: int = 10 * 1024 * 1024
     max_batch_items: int = 20
 
+    # Shopify Integration
+    shopify_api_key: str | None = None
+    shopify_api_secret: str | None = None
+    shopify_app_scopes: List[str] = Field(
+        default_factory=lambda: ["write_products", "read_products"]
+    )
+    shopify_api_version: str = "2024-01"
+    shopify_encryption_key: str | None = None
+    shopify_app_host: str | None = None  # e.g. https://rendercart.com
+
     @property
     def resolved_database_url(self) -> str:
         if self.database_url:
@@ -127,6 +137,13 @@ def load_settings() -> Settings:
         callback_timeout_seconds=_get_int("CALLBACK_TIMEOUT_SECONDS", 10),
         max_upload_bytes=_get_int("MAX_UPLOAD_BYTES", 10 * 1024 * 1024),
         max_batch_items=_get_int("MAX_BATCH_ITEMS", 20),
+        
+        shopify_api_key=os.getenv("SHOPIFY_API_KEY"),
+        shopify_api_secret=os.getenv("SHOPIFY_API_SECRET"),
+        shopify_app_scopes=_get_list("SHOPIFY_APP_SCOPES", ["write_products", "read_products"]),
+        shopify_api_version=os.getenv("SHOPIFY_API_VERSION", "2024-01"),
+        shopify_encryption_key=os.getenv("SHOPIFY_ENCRYPTION_KEY"),
+        shopify_app_host=os.getenv("SHOPIFY_APP_HOST"),
     )
 
 

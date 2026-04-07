@@ -137,3 +137,18 @@ class BrandKit(Base):
     framing = Column(String(256), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ShopifyStore(Base):
+    __tablename__ = "shopify_stores"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(String(64), nullable=False, index=True)
+    shop_domain = Column(String(256), nullable=False, index=True)
+    access_token_encrypted = Column(Text, nullable=False)
+    scopes = Column(String(1024), nullable=True)
+    status = Column(String(32), nullable=False, default="active", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    error_details = Column(Text, nullable=True)
+
