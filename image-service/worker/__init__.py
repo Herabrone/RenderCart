@@ -1,1 +1,0 @@
-# RenderCart worker package.
