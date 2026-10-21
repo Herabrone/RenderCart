@@ -19,15 +19,12 @@ the host and is reached only through the tunnel.
 - The current zone has only the root app record and an SSH record. Add storage
   and analytics host routes to the existing tunnel only when those services
   are ready; do not create a duplicate tunnel.
-- `main` still contains the legacy RenderCart app. The utility-tools tree is
-  currently on `Feature-5` with uncommitted changes. Do not deploy `main` until
-  the intended utility-tools tree has been reviewed and merged there.
 - The Ubuntu machine has not been provisioned for RenderCart. Confirm it is
   intended to stay powered on, connected, and awake; a laptop that sleeps or
   loses home internet cannot provide durable public hosting.
 - Pick the production domain/subdomains and configure the Cloudflare Tunnel.
-- Create `/etc/rendercart/.env` with production-only secrets and mode `0600`.
-  Never put that file in the repository or Actions logs. Start from
+- Create `/home/darian/.config/rendercart/.env` with production-only secrets
+  and mode `0600`. Never put that file in the repository or Actions logs. Start from
   `.env.example`, use unique random values, and set `APP_ENV=production`,
   `APP_BASE_URL`, `S3_PROXY_SITE`, `S3_PUBLIC_ENDPOINT`, `UMAMI_BASE_URL`,
   production auth/email/payment keys and the owner's `SUPER_ADMIN_EMAIL`.
@@ -45,9 +42,9 @@ the host and is reached only through the tunnel.
    repository; enable Docker at boot. Confirm the host has adequate free disk,
    memory, cooling and uninterrupted power for Postgres, Redis, MinIO, web, API,
    analytics and workers.
-2. Create `/etc/rendercart/` owned by root, then create `.env` there with
-   restricted permissions. Ensure the runner account can read it, but other
-   local users cannot.
+2. Create `/home/darian/.config/rendercart/` with mode `0700`, then create
+   `.env` there with mode `0600`. The deployment runner runs as `darian` and
+   reads this file directly; keep it out of the repository.
 3. Install the GitHub Actions runner under a dedicated non-login service
    account, configure it as a systemd service, and apply the `rendercart`
    label. Do not run a second runner job concurrently with production deploys.
@@ -71,8 +68,8 @@ the host and is reached only through the tunnel.
 ## Deployment behavior
 
 `.github/workflows/deploy.yml` runs after the `CI` workflow succeeds for a push
-to `main`. It checks out that exact commit, checks for the host environment
-file, validates Compose configuration, builds images on the host, applies
+to `main`. It checks out that exact commit, checks the owner-only host
+environment file at `/home/darian/.config/rendercart/.env`, validates Compose configuration, builds images on the host, applies
 Alembic migrations, and starts the stack. Persistent named
 volumes retain Postgres, Redis, MinIO, Caddy and Umami data across normal
 redeploys. The workflow uses a concurrency lock so deploys do not overlap.
