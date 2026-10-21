@@ -43,9 +43,7 @@ TOOL = ToolManifest(
     slug="subtitle-translation",
     name="Translate Subtitles",
     category=Category.AUDIO_VIDEO,
-    summary=(
-        "Translate an uploaded SRT or VTT subtitle file and preserve all original timecodes."
-    ),
+    summary=("Translate an uploaded SRT or VTT subtitle file and preserve all original timecodes."),
     min_level=Level.PRO,
     runtime=Runtime.LLM,
     queue=Queue.CPU_DEFAULT,

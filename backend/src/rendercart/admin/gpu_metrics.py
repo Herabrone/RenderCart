@@ -44,16 +44,9 @@ def _gpu_worker_snapshot() -> dict[str, object]:
         gpu_workers = sorted(
             name
             for name, queues in active_queues.items()
-            if any(
-                queue.get("name") in _GPU_QUEUES
-                for queue in queues
-                if isinstance(queue, dict)
-            )
+            if any(queue.get("name") in _GPU_QUEUES for queue in queues if isinstance(queue, dict))
         )
-        depths = {
-            queue: int(cast(int, redis_client.llen(queue)))
-            for queue in _GPU_QUEUES
-        }
+        depths = {queue: int(cast(int, redis_client.llen(queue))) for queue in _GPU_QUEUES}
         return {
             "status": "online" if gpu_workers else "offline",
             "workers_seen": len(worker_names),

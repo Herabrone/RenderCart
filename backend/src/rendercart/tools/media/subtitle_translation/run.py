@@ -167,9 +167,7 @@ def run(
             (cue_id, cues[cue_id].text)
             for cue_id in range(offset, min(offset + chunk_size, len(cues)))
         ]
-        translated_text.update(
-            _translate_chunk(chunk, _LANGUAGES[target_language], job_id)
-        )
+        translated_text.update(_translate_chunk(chunk, _LANGUAGES[target_language], job_id))
         if progress:
             progress(min(99, round((offset + len(chunk)) / len(cues) * 100)))
 

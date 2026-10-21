@@ -1223,9 +1223,7 @@ def _deliver_monitor_alert(
                     if status_code is not None
                     else f"Check error: {error_code or 'unknown'}"
                 )
-                send_twilio_sms(
-                    phone, f"RenderCart: '{monitor.name}' ({host}) {state}. {detail}."
-                )
+                send_twilio_sms(phone, f"RenderCart: '{monitor.name}' ({host}) {state}. {detail}.")
             except Exception:
                 _settle_monitor_sms(db, delivery_id, sent=False)
                 logger.warning("monitor_sms_alert_failed", monitor_id=str(monitor.id))
@@ -1235,9 +1233,7 @@ def _deliver_monitor_alert(
     return delivered
 
 
-def _reserve_monitor_sms(
-    db: Session, monitor: UptimeMonitor, *, recovered: bool
-) -> UUID | None:
+def _reserve_monitor_sms(db: Session, monitor: UptimeMonitor, *, recovered: bool) -> UUID | None:
     """Reserve a monthly SMS slot and one credit before contacting Twilio."""
     event = "recovered" if recovered else "outage"
     delivery = db.scalar(
@@ -1615,9 +1611,7 @@ def cleanup_expired_webhook_bins() -> int:
         cutoff = datetime.now(UTC)
         expired_count = int(
             db.scalar(
-                select(func.count())
-                .select_from(WebhookBin)
-                .where(WebhookBin.expires_at <= cutoff)
+                select(func.count()).select_from(WebhookBin).where(WebhookBin.expires_at <= cutoff)
             )
             or 0
         )
@@ -1640,9 +1634,7 @@ def cleanup_expired_vault_items() -> int:
         )
         paste_count = int(
             db.scalar(
-                select(func.count())
-                .select_from(VaultPaste)
-                .where(VaultPaste.expires_at <= cutoff)
+                select(func.count()).select_from(VaultPaste).where(VaultPaste.expires_at <= cutoff)
             )
             or 0
         )

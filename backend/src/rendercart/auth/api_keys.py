@@ -52,9 +52,7 @@ def list_api_keys(
     user, _session = _session_user(db, raw_session)
     rows = list(
         db.scalars(
-            select(ApiKey)
-            .where(ApiKey.user_id == user.id)
-            .order_by(ApiKey.created_at.desc())
+            select(ApiKey).where(ApiKey.user_id == user.id).order_by(ApiKey.created_at.desc())
         )
     )
     return [

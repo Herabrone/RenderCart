@@ -70,11 +70,15 @@ def _load_pipeline() -> Any:
             )
         )
         config = json.loads((model_dir / "config.json").read_text(encoding="utf-8"))
-        model = KModel(
-            repo_id=settings.tts_model_id,
-            config=config,
-            model=str(model_dir / "kokoro-v1_0.pth"),
-        ).to("cuda").eval()
+        model = (
+            KModel(
+                repo_id=settings.tts_model_id,
+                config=config,
+                model=str(model_dir / "kokoro-v1_0.pth"),
+            )
+            .to("cuda")
+            .eval()
+        )
         return KPipeline(lang_code="a", repo_id=settings.tts_model_id, model=model)
     except Exception as exc:
         raise ValueError("tts_model_unavailable") from exc
@@ -144,9 +148,7 @@ def run(
                 split_pattern=r"\n+|(?<=[.!?])\s+",
             ):
                 samples = (
-                    audio.detach().cpu().numpy()
-                    if hasattr(audio, "detach")
-                    else np.asarray(audio)
+                    audio.detach().cpu().numpy() if hasattr(audio, "detach") else np.asarray(audio)
                 )
                 samples = np.asarray(samples, dtype=np.float32).squeeze()
                 if samples.ndim != 1 or samples.size == 0:

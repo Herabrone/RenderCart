@@ -38,9 +38,7 @@ class Options(BaseModel):
         ),
     )
     bill_credits: bool = Field(default=False, json_schema_extra={"internal": True})
-    max_minutes_per_month: int | None = Field(
-        default=None, json_schema_extra={"internal": True}
-    )
+    max_minutes_per_month: int | None = Field(default=None, json_schema_extra={"internal": True})
 
 
 def _load_model() -> Any:
@@ -113,9 +111,7 @@ def _speaker_turns(pipeline: Any, media_path: Path) -> list[dict[str, Any]]:
     ]
 
 
-def _speaker_for_interval(
-    start: float, end: float, turns: list[dict[str, Any]]
-) -> str | None:
+def _speaker_for_interval(start: float, end: float, turns: list[dict[str, Any]]) -> str | None:
     best_speaker: str | None = None
     best_overlap = 0.0
     for turn in turns:

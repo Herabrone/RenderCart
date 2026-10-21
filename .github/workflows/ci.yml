@@ -16,7 +16,6 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          working-directory: backend
       - run: uv sync --extra dev
         working-directory: backend
       - run: uv run ruff check .

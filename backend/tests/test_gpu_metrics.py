@@ -24,7 +24,7 @@ def sign_in(client: TestClient, db: Session, role: StaffRole, *, mfa: bool = Tru
 def test_parse_dcgm_metrics_groups_values_by_gpu() -> None:
     rows = parse_dcgm_metrics(
         [
-            '# HELP DCGM_FI_DEV_GPU_UTIL GPU utilization.',
+            "# HELP DCGM_FI_DEV_GPU_UTIL GPU utilization.",
             'DCGM_FI_DEV_GPU_UTIL{gpu="0",UUID="GPU-a",modelName="A100"} 73',
             'DCGM_FI_DEV_FB_USED{gpu="0",UUID="GPU-a",modelName="A100"} 12000',
             'DCGM_FI_DEV_GPU_TEMP{gpu="1",UUID="GPU-b",modelName="A100"} 65',
@@ -69,7 +69,9 @@ def test_gpu_worker_snapshot_reports_only_gpu_queues(
     monkeypatch.setattr(
         gpu_metrics,
         "get_settings",
-        lambda: type("Settings", (), {"celery_broker_url": None, "redis_url": "redis://broker/0"})(),
+        lambda: type(
+            "Settings", (), {"celery_broker_url": None, "redis_url": "redis://broker/0"}
+        )(),
     )
     monkeypatch.setattr(
         gpu_metrics.Redis,

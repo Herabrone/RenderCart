@@ -28,9 +28,7 @@ class Options(BaseModel):
     font_size: int = Field(default=28, ge=18, le=48)
     font_color: Literal["white", "yellow", "cyan"] = Field(default="white")
     bill_credits: bool = Field(default=False, json_schema_extra={"internal": True})
-    max_minutes_per_month: int | None = Field(
-        default=None, json_schema_extra={"internal": True}
-    )
+    max_minutes_per_month: int | None = Field(default=None, json_schema_extra={"internal": True})
 
 
 TOOL = ToolManifest(

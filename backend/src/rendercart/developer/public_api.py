@@ -174,9 +174,7 @@ def create_api_upload(
         db,
         user,
         request,
-        lambda raw: create_upload(
-            body, request, response, db, raw_session=raw, raw_guest=None
-        ),
+        lambda raw: create_upload(body, request, response, db, raw_session=raw, raw_guest=None),
     )
 
 

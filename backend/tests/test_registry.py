@@ -153,5 +153,3 @@ def test_video_credit_cost_uses_rounded_up_100_mib_units() -> None:
     assert tool.credits_for_bytes(0) == 0
     assert tool.credits_for_bytes(unit) == 1
     assert tool.credits_for_bytes(unit + 1) == 2
-
-

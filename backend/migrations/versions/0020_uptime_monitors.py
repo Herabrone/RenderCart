@@ -39,12 +39,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_uptime_monitors_user_id", "uptime_monitors", ["user_id"])
-    op.create_index(
-        "ix_uptime_monitors_due", "uptime_monitors", ["active", "next_check_at"]
-    )
-    op.create_index(
-        "ix_uptime_monitors_owner", "uptime_monitors", ["user_id", "created_at"]
-    )
+    op.create_index("ix_uptime_monitors_due", "uptime_monitors", ["active", "next_check_at"])
+    op.create_index("ix_uptime_monitors_owner", "uptime_monitors", ["user_id", "created_at"])
     op.create_index("ix_uptime_monitors_next_check_at", "uptime_monitors", ["next_check_at"])
 
     op.create_table(
@@ -60,17 +56,13 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["monitor_id"], ["uptime_monitors.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_uptime_monitor_checks_monitor_id", "uptime_monitor_checks", ["monitor_id"]
-    )
+    op.create_index("ix_uptime_monitor_checks_monitor_id", "uptime_monitor_checks", ["monitor_id"])
     op.create_index(
         "ix_uptime_monitor_checks_monitor_time",
         "uptime_monitor_checks",
         ["monitor_id", "checked_at"],
     )
-    op.create_index(
-        "ix_uptime_monitor_checks_checked_at", "uptime_monitor_checks", ["checked_at"]
-    )
+    op.create_index("ix_uptime_monitor_checks_checked_at", "uptime_monitor_checks", ["checked_at"])
 
 
 def downgrade() -> None:

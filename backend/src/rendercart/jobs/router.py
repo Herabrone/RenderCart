@@ -318,11 +318,7 @@ def create_job(
                     detail="Modern and compact resume layouts are available with a day pass or Pro",
                     headers={"X-Paywall": "pro-required"},
                 )
-            if (
-                slug == "resume-builder"
-                and options.get("rewrite_with_ai")
-                and level < Level.PRO
-            ):
+            if slug == "resume-builder" and options.get("rewrite_with_ai") and level < Level.PRO:
                 raise HTTPException(
                     status_code=402,
                     detail="AI resume rewriting is available with Pro",

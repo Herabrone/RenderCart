@@ -32,9 +32,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id", "period", name="uq_uptime_monitor_sms_usage_owner_period"),
     )
-    op.create_index(
-        "ix_uptime_monitor_sms_usage_user_id", "uptime_monitor_sms_usage", ["user_id"]
-    )
+    op.create_index("ix_uptime_monitor_sms_usage_user_id", "uptime_monitor_sms_usage", ["user_id"])
     op.create_table(
         "uptime_monitor_sms_deliveries",
         sa.Column("id", sa.Uuid(), nullable=False),

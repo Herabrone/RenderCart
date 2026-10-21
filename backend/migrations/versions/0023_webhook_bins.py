@@ -30,9 +30,7 @@ def upgrade() -> None:
     op.create_index("ix_webhook_bins_user_id", "webhook_bins", ["user_id"])
     op.create_index("ix_webhook_bins_token_hash", "webhook_bins", ["token_hash"])
     op.create_index("ix_webhook_bins_expires_at", "webhook_bins", ["expires_at"])
-    op.create_index(
-        "ix_webhook_bins_owner_expiry", "webhook_bins", ["user_id", "expires_at"]
-    )
+    op.create_index("ix_webhook_bins_owner_expiry", "webhook_bins", ["user_id", "expires_at"])
 
     op.create_table(
         "webhook_bin_events",

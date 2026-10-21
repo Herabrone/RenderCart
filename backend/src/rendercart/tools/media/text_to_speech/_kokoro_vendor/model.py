@@ -8,8 +8,9 @@ from typing import Dict, Optional, Union
 import json
 import torch
 
+
 class KModel(torch.nn.Module):
-    '''
+    """
     KModel is a torch.nn.Module with 2 main responsibilities:
     1. Init weights, downloading config.json + model.pth from HF if needed
     2. forward(phonemes: str, ref_s: FloatTensor) -> (audio: FloatTensor)
@@ -21,11 +22,11 @@ class KModel(torch.nn.Module):
 
     KModel stores self.vocab and thus knows how to map phonemes -> input_ids,
     so there is no need to repeatedly download config.json outside of KModel.
-    '''
+    """
 
     MODEL_NAMES = {
-        'hexgrad/Kokoro-82M': 'kokoro-v1_0.pth',
-        'hexgrad/Kokoro-82M-v1.1-zh': 'kokoro-v1_1-zh.pth',
+        "hexgrad/Kokoro-82M": "kokoro-v1_0.pth",
+        "hexgrad/Kokoro-82M-v1.1-zh": "kokoro-v1_1-zh.pth",
     }
 
     def __init__(
@@ -33,39 +34,49 @@ class KModel(torch.nn.Module):
         repo_id: Optional[str] = None,
         config: Union[Dict, str, None] = None,
         model: Optional[str] = None,
-        disable_complex: bool = False
+        disable_complex: bool = False,
     ):
         super().__init__()
         if repo_id is None:
-            repo_id = 'hexgrad/Kokoro-82M'
-            print(f"WARNING: Defaulting repo_id to {repo_id}. Pass repo_id='{repo_id}' to suppress this warning.")
+            repo_id = "hexgrad/Kokoro-82M"
+            print(
+                f"WARNING: Defaulting repo_id to {repo_id}. Pass repo_id='{repo_id}' to suppress this warning."
+            )
         self.repo_id = repo_id
         if not isinstance(config, dict):
             if not config:
                 logger.debug("No config provided, downloading from HF")
-                config = hf_hub_download(repo_id=repo_id, filename='config.json')
-            with open(config, 'r', encoding='utf-8') as r:
+                config = hf_hub_download(repo_id=repo_id, filename="config.json")
+            with open(config, "r", encoding="utf-8") as r:
                 config = json.load(r)
                 logger.debug(f"Loaded config: {config}")
-        self.vocab = config['vocab']
-        self.bert = CustomAlbert(AlbertConfig(vocab_size=config['n_token'], **config['plbert']))
-        self.bert_encoder = torch.nn.Linear(self.bert.config.hidden_size, config['hidden_dim'])
+        self.vocab = config["vocab"]
+        self.bert = CustomAlbert(AlbertConfig(vocab_size=config["n_token"], **config["plbert"]))
+        self.bert_encoder = torch.nn.Linear(self.bert.config.hidden_size, config["hidden_dim"])
         self.context_length = self.bert.config.max_position_embeddings
         self.predictor = ProsodyPredictor(
-            style_dim=config['style_dim'], d_hid=config['hidden_dim'],
-            nlayers=config['n_layer'], max_dur=config['max_dur'], dropout=config['dropout']
+            style_dim=config["style_dim"],
+            d_hid=config["hidden_dim"],
+            nlayers=config["n_layer"],
+            max_dur=config["max_dur"],
+            dropout=config["dropout"],
         )
         self.text_encoder = TextEncoder(
-            channels=config['hidden_dim'], kernel_size=config['text_encoder_kernel_size'],
-            depth=config['n_layer'], n_symbols=config['n_token']
+            channels=config["hidden_dim"],
+            kernel_size=config["text_encoder_kernel_size"],
+            depth=config["n_layer"],
+            n_symbols=config["n_token"],
         )
         self.decoder = Decoder(
-            dim_in=config['hidden_dim'], style_dim=config['style_dim'],
-            dim_out=config['n_mels'], disable_complex=disable_complex, **config['istftnet']
+            dim_in=config["hidden_dim"],
+            style_dim=config["style_dim"],
+            dim_out=config["n_mels"],
+            disable_complex=disable_complex,
+            **config["istftnet"],
         )
         if not model:
             model = hf_hub_download(repo_id=repo_id, filename=KModel.MODEL_NAMES[repo_id])
-        for key, state_dict in torch.load(model, map_location='cpu', weights_only=True).items():
+        for key, state_dict in torch.load(model, map_location="cpu", weights_only=True).items():
             assert hasattr(self, key), key
             try:
                 getattr(self, key).load_state_dict(state_dict)
@@ -85,20 +96,19 @@ class KModel(torch.nn.Module):
 
     @torch.no_grad()
     def forward_with_tokens(
-        self,
-        input_ids: torch.LongTensor,
-        ref_s: torch.FloatTensor,
-        speed: float = 1
+        self, input_ids: torch.LongTensor, ref_s: torch.FloatTensor, speed: float = 1
     ) -> tuple[torch.FloatTensor, torch.LongTensor]:
         input_lengths = torch.full(
-            (input_ids.shape[0],), 
-            input_ids.shape[-1], 
-            device=input_ids.device,
-            dtype=torch.long
+            (input_ids.shape[0],), input_ids.shape[-1], device=input_ids.device, dtype=torch.long
         )
 
-        text_mask = torch.arange(input_lengths.max()).unsqueeze(0).expand(input_lengths.shape[0], -1).type_as(input_lengths)
-        text_mask = torch.gt(text_mask+1, input_lengths.unsqueeze(1)).to(self.device)
+        text_mask = (
+            torch.arange(input_lengths.max())
+            .unsqueeze(0)
+            .expand(input_lengths.shape[0], -1)
+            .type_as(input_lengths)
+        )
+        text_mask = torch.gt(text_mask + 1, input_lengths.unsqueeze(1)).to(self.device)
         bert_dur = self.bert(input_ids, attention_mask=(~text_mask).int())
         d_en = self.bert_encoder(bert_dur).transpose(-1, -2)
         s = ref_s[:, 128:]
@@ -107,7 +117,9 @@ class KModel(torch.nn.Module):
         duration = self.predictor.duration_proj(x)
         duration = torch.sigmoid(duration).sum(axis=-1) / speed
         pred_dur = torch.round(duration).clamp(min=1).long().squeeze()
-        indices = torch.repeat_interleave(torch.arange(input_ids.shape[1], device=self.device), pred_dur)
+        indices = torch.repeat_interleave(
+            torch.arange(input_ids.shape[1], device=self.device), pred_dur
+        )
         pred_aln_trg = torch.zeros((input_ids.shape[1], indices.shape[0]), device=self.device)
         pred_aln_trg[indices, torch.arange(indices.shape[0])] = 1
         pred_aln_trg = pred_aln_trg.unsqueeze(0).to(self.device)
@@ -119,15 +131,13 @@ class KModel(torch.nn.Module):
         return audio, pred_dur
 
     def forward(
-        self,
-        phonemes: str,
-        ref_s: torch.FloatTensor,
-        speed: float = 1,
-        return_output: bool = False
-    ) -> Union['KModel.Output', torch.FloatTensor]:
-        input_ids = list(filter(lambda i: i is not None, map(lambda p: self.vocab.get(p), phonemes)))
+        self, phonemes: str, ref_s: torch.FloatTensor, speed: float = 1, return_output: bool = False
+    ) -> Union["KModel.Output", torch.FloatTensor]:
+        input_ids = list(
+            filter(lambda i: i is not None, map(lambda p: self.vocab.get(p), phonemes))
+        )
         logger.debug(f"phonemes: {phonemes} -> input_ids: {input_ids}")
-        assert len(input_ids)+2 <= self.context_length, (len(input_ids)+2, self.context_length)
+        assert len(input_ids) + 2 <= self.context_length, (len(input_ids) + 2, self.context_length)
         input_ids = torch.LongTensor([[0, *input_ids, 0]]).to(self.device)
         ref_s = ref_s.to(self.device)
         audio, pred_dur = self.forward_with_tokens(input_ids, ref_s, speed)
@@ -136,16 +146,14 @@ class KModel(torch.nn.Module):
         logger.debug(f"pred_dur: {pred_dur}")
         return self.Output(audio=audio, pred_dur=pred_dur) if return_output else audio
 
+
 class KModelForONNX(torch.nn.Module):
     def __init__(self, kmodel: KModel):
         super().__init__()
         self.kmodel = kmodel
 
     def forward(
-        self,
-        input_ids: torch.LongTensor,
-        ref_s: torch.FloatTensor,
-        speed: float = 1
+        self, input_ids: torch.LongTensor, ref_s: torch.FloatTensor, speed: float = 1
     ) -> tuple[torch.FloatTensor, torch.LongTensor]:
         waveform, duration = self.kmodel.forward_with_tokens(input_ids, ref_s, speed)
         return waveform, duration

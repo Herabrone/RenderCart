@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 
 class LinearNorm(nn.Module):
-    def __init__(self, in_dim, out_dim, bias=True, w_init_gain='linear'):
+    def __init__(self, in_dim, out_dim, bias=True, w_init_gain="linear"):
         super(LinearNorm, self).__init__()
         self.linear_layer = nn.Linear(in_dim, out_dim, bias=bias)
         nn.init.xavier_uniform_(self.linear_layer.weight, gain=nn.init.calculate_gain(w_init_gain))
@@ -39,13 +39,17 @@ class TextEncoder(nn.Module):
         padding = (kernel_size - 1) // 2
         self.cnn = nn.ModuleList()
         for _ in range(depth):
-            self.cnn.append(nn.Sequential(
-                weight_norm(nn.Conv1d(channels, channels, kernel_size=kernel_size, padding=padding)),
-                LayerNorm(channels),
-                actv,
-                nn.Dropout(0.2),
-            ))
-        self.lstm = nn.LSTM(channels, channels//2, 1, batch_first=True, bidirectional=True)
+            self.cnn.append(
+                nn.Sequential(
+                    weight_norm(
+                        nn.Conv1d(channels, channels, kernel_size=kernel_size, padding=padding)
+                    ),
+                    LayerNorm(channels),
+                    actv,
+                    nn.Dropout(0.2),
+                )
+            )
+        self.lstm = nn.LSTM(channels, channels // 2, 1, batch_first=True, bidirectional=True)
 
     def forward(self, x, input_lengths, m):
         x = self.embedding(x)  # [B, T, emb]
@@ -56,14 +60,18 @@ class TextEncoder(nn.Module):
             x = c(x)
             x.masked_fill_(m, 0.0)
         x = x.transpose(1, 2)  # [B, T, chn]
-        lengths = input_lengths if input_lengths.device == torch.device('cpu') else input_lengths.to('cpu')
+        lengths = (
+            input_lengths
+            if input_lengths.device == torch.device("cpu")
+            else input_lengths.to("cpu")
+        )
         x = nn.utils.rnn.pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)
         self.lstm.flatten_parameters()
         x, _ = self.lstm(x)
         x, _ = nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
         x = x.transpose(-1, -2)
         x_pad = torch.zeros([x.shape[0], x.shape[1], m.shape[-1]], device=x.device)
-        x_pad[:, :, :x.shape[-1]] = x
+        x_pad[:, :, : x.shape[-1]] = x
         x = x_pad
         x.masked_fill_(m, 0.0)
         return x
@@ -74,7 +82,7 @@ class AdaLayerNorm(nn.Module):
         super().__init__()
         self.channels = channels
         self.eps = eps
-        self.fc = nn.Linear(style_dim, channels*2)
+        self.fc = nn.Linear(style_dim, channels * 2)
 
     def forward(self, x, s):
         x = x.transpose(-1, -2)
@@ -91,13 +99,19 @@ class AdaLayerNorm(nn.Module):
 class ProsodyPredictor(nn.Module):
     def __init__(self, style_dim, d_hid, nlayers, max_dur=50, dropout=0.1):
         super().__init__()
-        self.text_encoder = DurationEncoder(sty_dim=style_dim, d_model=d_hid,nlayers=nlayers, dropout=dropout)
+        self.text_encoder = DurationEncoder(
+            sty_dim=style_dim, d_model=d_hid, nlayers=nlayers, dropout=dropout
+        )
         self.lstm = nn.LSTM(d_hid + style_dim, d_hid // 2, 1, batch_first=True, bidirectional=True)
         self.duration_proj = LinearNorm(d_hid, max_dur)
-        self.shared = nn.LSTM(d_hid + style_dim, d_hid // 2, 1, batch_first=True, bidirectional=True)
+        self.shared = nn.LSTM(
+            d_hid + style_dim, d_hid // 2, 1, batch_first=True, bidirectional=True
+        )
         self.F0 = nn.ModuleList()
         self.F0.append(AdainResBlk1d(d_hid, d_hid, style_dim, dropout_p=dropout))
-        self.F0.append(AdainResBlk1d(d_hid, d_hid // 2, style_dim, upsample=True, dropout_p=dropout))
+        self.F0.append(
+            AdainResBlk1d(d_hid, d_hid // 2, style_dim, upsample=True, dropout_p=dropout)
+        )
         self.F0.append(AdainResBlk1d(d_hid // 2, d_hid // 2, style_dim, dropout_p=dropout))
         self.N = nn.ModuleList()
         self.N.append(AdainResBlk1d(d_hid, d_hid, style_dim, dropout_p=dropout))
@@ -109,16 +123,18 @@ class ProsodyPredictor(nn.Module):
     def forward(self, texts, style, text_lengths, alignment, m):
         d = self.text_encoder(texts, style, text_lengths, m)
         m = m.unsqueeze(1)
-        lengths = text_lengths if text_lengths.device == torch.device('cpu') else text_lengths.to('cpu')
+        lengths = (
+            text_lengths if text_lengths.device == torch.device("cpu") else text_lengths.to("cpu")
+        )
         x = nn.utils.rnn.pack_padded_sequence(d, lengths, batch_first=True, enforce_sorted=False)
         self.lstm.flatten_parameters()
         x, _ = self.lstm(x)
         x, _ = nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
         x_pad = torch.zeros([x.shape[0], m.shape[-1], x.shape[-1]], device=x.device)
-        x_pad[:, :x.shape[1], :] = x
+        x_pad[:, : x.shape[1], :] = x
         x = x_pad
         duration = self.duration_proj(nn.functional.dropout(x, 0.5, training=False))
-        en = (d.transpose(-1, -2) @ alignment)
+        en = d.transpose(-1, -2) @ alignment
         return duration.squeeze(-1), en
 
     def F0Ntrain(self, x, s):
@@ -139,7 +155,16 @@ class DurationEncoder(nn.Module):
         super().__init__()
         self.lstms = nn.ModuleList()
         for _ in range(nlayers):
-            self.lstms.append(nn.LSTM(d_model + sty_dim, d_model // 2, num_layers=1, batch_first=True, bidirectional=True, dropout=dropout))
+            self.lstms.append(
+                nn.LSTM(
+                    d_model + sty_dim,
+                    d_model // 2,
+                    num_layers=1,
+                    batch_first=True,
+                    bidirectional=True,
+                    dropout=dropout,
+                )
+            )
             self.lstms.append(AdaLayerNorm(sty_dim, d_model))
         self.dropout = dropout
         self.d_model = d_model
@@ -159,18 +184,22 @@ class DurationEncoder(nn.Module):
                 x = torch.cat([x, s.permute(1, 2, 0)], axis=1)
                 x.masked_fill_(masks.unsqueeze(-1).transpose(-1, -2), 0.0)
             else:
-                lengths = text_lengths if text_lengths.device == torch.device('cpu') else text_lengths.to('cpu')
+                lengths = (
+                    text_lengths
+                    if text_lengths.device == torch.device("cpu")
+                    else text_lengths.to("cpu")
+                )
                 x = x.transpose(-1, -2)
                 x = nn.utils.rnn.pack_padded_sequence(
-                    x, lengths, batch_first=True, enforce_sorted=False)
+                    x, lengths, batch_first=True, enforce_sorted=False
+                )
                 block.flatten_parameters()
                 x, _ = block(x)
-                x, _ = nn.utils.rnn.pad_packed_sequence(
-                    x, batch_first=True)
+                x, _ = nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
                 x = F.dropout(x, p=self.dropout, training=False)
                 x = x.transpose(-1, -2)
                 x_pad = torch.zeros([x.shape[0], x.shape[1], m.shape[-1]], device=x.device)
-                x_pad[:, :, :x.shape[-1]] = x
+                x_pad[:, :, : x.shape[-1]] = x
                 x = x_pad
 
         return x.transpose(-1, -2)

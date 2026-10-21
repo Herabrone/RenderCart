@@ -29,9 +29,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("job_id", name="uq_website_audit_reports_job_id"),
     )
-    op.create_index(
-        "ix_website_audit_reports_user_id", "website_audit_reports", ["user_id"]
-    )
+    op.create_index("ix_website_audit_reports_user_id", "website_audit_reports", ["user_id"])
     op.create_index(
         "ix_website_audit_reports_owner_created",
         "website_audit_reports",

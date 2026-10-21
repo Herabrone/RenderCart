@@ -32,9 +32,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["last_job_id"], ["jobs.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_website_audit_schedules_user_id", "website_audit_schedules", ["user_id"]
-    )
+    op.create_index("ix_website_audit_schedules_user_id", "website_audit_schedules", ["user_id"])
     op.create_index(
         "ix_website_audit_schedules_next_run_at", "website_audit_schedules", ["next_run_at"]
     )

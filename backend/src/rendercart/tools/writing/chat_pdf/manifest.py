@@ -38,12 +38,8 @@ TOOL = ToolManifest(
         Level.GUEST: Limit(count_per_day=1, max_files=1, max_total_mb=10, max_pages=100),
         Level.FREE: Limit(count_per_day=1, max_files=1, max_total_mb=10, max_pages=100),
         Level.DAY_PASS: Limit(fair_use_per_hour=20, max_files=1, max_total_mb=500, max_pages=2_000),
-        Level.PRO: Limit(
-            fair_use_per_hour=20, max_files=1, max_total_mb=500, max_pages=2_000
-        ),
-        Level.ADMIN: Limit(
-            fair_use_per_hour=20, max_files=1, max_total_mb=500, max_pages=2_000
-        ),
+        Level.PRO: Limit(fair_use_per_hour=20, max_files=1, max_total_mb=500, max_pages=2_000),
+        Level.ADMIN: Limit(fair_use_per_hour=20, max_files=1, max_total_mb=500, max_pages=2_000),
         Level.SUPER_ADMIN: Limit(
             fair_use_per_hour=20, max_files=1, max_total_mb=500, max_pages=2_000
         ),

@@ -5,13 +5,13 @@ from fastapi.testclient import TestClient
 
 from rendercart.business import currency_rates
 
-_ECB_SAMPLE = b'''<?xml version="1.0" encoding="UTF-8"?>
+_ECB_SAMPLE = b"""<?xml version="1.0" encoding="UTF-8"?>
 <gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01"
  xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
   <Cube><Cube time="2026-10-16">
     <Cube currency="USD" rate="1.1642"/><Cube currency="CAD" rate="1.6032"/>
   </Cube></Cube>
-</gesmes:Envelope>'''
+</gesmes:Envelope>"""
 
 
 def test_parse_ecb_reference_rates_and_base() -> None:

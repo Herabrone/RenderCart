@@ -184,9 +184,7 @@ def create_monitor(
     limit = 20 if pro_features else 1
     total = int(
         db.scalar(
-            select(func.count())
-            .select_from(UptimeMonitor)
-            .where(UptimeMonitor.user_id == user.id)
+            select(func.count()).select_from(UptimeMonitor).where(UptimeMonitor.user_id == user.id)
         )
         or 0
     )
@@ -299,10 +297,12 @@ def request_monitor_check(
 ) -> Response:
     user = _monitor_user(db, raw_session)
     monitor = db.scalar(
-        select(UptimeMonitor).where(
+        select(UptimeMonitor)
+        .where(
             UptimeMonitor.id == monitor_id,
             UptimeMonitor.user_id == user.id,
-        ).with_for_update()
+        )
+        .with_for_update()
     )
     if monitor is None:
         raise HTTPException(status_code=404, detail="Monitor not found")

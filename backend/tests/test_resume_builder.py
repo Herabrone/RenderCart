@@ -53,9 +53,7 @@ def test_resume_builder_rejects_unknown_template(tmp_path: Path) -> None:
         resume_run.run(
             input_paths=[],
             output_dir=tmp_path,
-            resume_json=(
-                '{"name":"Avery Example","summary":"Experienced designer."}'
-            ),
+            resume_json=('{"name":"Avery Example","summary":"Experienced designer."}'),
             template="executive",  # type: ignore[arg-type]
         )
 

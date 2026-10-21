@@ -115,9 +115,7 @@ def _create(  # noqa: UP047
 ) -> dict[str, object]:
     count = int(
         db.scalar(
-            select(func.count())
-            .select_from(record_type)
-            .where(record_type.user_id == user.id)
+            select(func.count()).select_from(record_type).where(record_type.user_id == user.id)
         )
         or 0
     )
@@ -258,9 +256,7 @@ def reserve_invoice_number(
     try:
         number = reserve_number(db, user.id, body.document_type)
     except RuntimeError as exc:
-        raise HTTPException(
-            status_code=500, detail="Could not reserve an invoice number"
-        ) from exc
+        raise HTTPException(status_code=500, detail="Could not reserve an invoice number") from exc
     db.add(
         AuditLog(
             actor_user_id=user.id,

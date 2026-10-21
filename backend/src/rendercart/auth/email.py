@@ -51,8 +51,7 @@ def send_monitor_alert(
         f"HTTP status: {status_code}" if status_code is not None else f"Check error: {error_code}"
     )
     message.set_content(
-        f"Your RenderCart uptime monitor '{monitor_name}' for {host} {state}.\n\n"
-        f"{details}\n"
+        f"Your RenderCart uptime monitor '{monitor_name}' for {host} {state}.\n\n{details}\n"
     )
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
         smtp.send_message(message)

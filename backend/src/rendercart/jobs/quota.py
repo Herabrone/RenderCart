@@ -34,9 +34,7 @@ def reserve_amount(key: str, amount: int, maximum: int, ttl_seconds: int) -> boo
     if amount <= 0 or maximum <= 0:
         return False
     return bool(
-        redis_client.eval(
-            _RESERVE_AMOUNT, 1, key, str(amount), str(maximum), str(ttl_seconds)
-        )
+        redis_client.eval(_RESERVE_AMOUNT, 1, key, str(amount), str(maximum), str(ttl_seconds))
     )
 
 

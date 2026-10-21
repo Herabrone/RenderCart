@@ -28,9 +28,7 @@ TOOL = ToolManifest(
     slug="business-card",
     name="Business Card Generator",
     category=Category.BUSINESS,
-    summary=(
-        "Create a print-ready business card PDF with 0.125-inch bleed and trim marks."
-    ),
+    summary=("Create a print-ready business card PDF with 0.125-inch bleed and trim marks."),
     runtime=Runtime.CPU,
     queue=Queue.CPU_DEFAULT,
     inputs=FileInput(accept=[], min_files=0),

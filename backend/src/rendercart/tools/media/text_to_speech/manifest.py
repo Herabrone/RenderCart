@@ -27,9 +27,7 @@ TOOL = ToolManifest(
         Level.GUEST: Limit(
             count_per_day=1, max_files=1, max_total_mb=1, max_characters_per_job=500
         ),
-        Level.FREE: Limit(
-            count_per_day=3, max_files=1, max_total_mb=1, max_characters_per_job=500
-        ),
+        Level.FREE: Limit(count_per_day=3, max_files=1, max_total_mb=1, max_characters_per_job=500),
         Level.DAY_PASS: Limit(
             fair_use_per_hour=20, max_files=1, max_total_mb=1, max_characters_per_job=100_000
         ),
