@@ -22,7 +22,7 @@ jobs:
     environment: production
     timeout-minutes: 45
     env:
-      RENDERCART_ENV_FILE: /home/darian/.config/rendercart/.env
+      RENDERCART_ENV_FILE: /home/darian/rendercart-production.env
     steps:
       - uses: actions/checkout@v4
         with:
