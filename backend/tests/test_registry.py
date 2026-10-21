@@ -97,6 +97,7 @@ def test_builtin_registry_has_reference_tools() -> None:
         "url-shortener",
         "pastebin",
         "temp-file-share",
+        "website-audit",
     }
 
 

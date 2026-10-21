@@ -140,6 +140,11 @@ def _verify_file(path: Path, content_type: str) -> None:
         subtitle_duration_seconds(path, content_type)
         return
     if content_type in AUDIO_MIMES or content_type in VIDEO_MIMES:
+        if content_type in VIDEO_MIMES:
+            with path.open("rb") as source:
+                header = source.read(12)
+            if header[:4] == b"RIFF" and header[8:12] == b"WAVE":
+                raise ValueError("media_type_mismatch")
         if not has_supported_media_signature(path, content_type):
             raise ValueError("invalid_media_file")
         streams = probe_media(path).streams
