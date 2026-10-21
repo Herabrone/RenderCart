@@ -21,6 +21,8 @@ jobs:
     runs-on: [self-hosted, linux, x64, rendercart]
     environment: production
     timeout-minutes: 45
+    env:
+      RENDERCART_ENV_FILE: /home/darian/.config/rendercart/.env
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,14 +31,14 @@ jobs:
       - name: Validate production configuration
         run: |
           set -eu
-          test -f /etc/rendercart/.env
-          test -r /etc/rendercart/.env
-          test -s /etc/rendercart/.env
+          test -f "$RENDERCART_ENV_FILE"
+          test -r "$RENDERCART_ENV_FILE"
+          test -s "$RENDERCART_ENV_FILE"
 
       - name: Build and migrate database
         run: |
           set -eu
-          ln -sfn /etc/rendercart/.env .env
+          ln -sfn "$RENDERCART_ENV_FILE" .env
           docker compose -f infra/compose.yml config --quiet
           docker compose -f infra/compose.yml build
           docker compose -f infra/compose.yml run --rm api alembic upgrade head
