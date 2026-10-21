@@ -23,7 +23,7 @@ the host and is reached only through the tunnel.
   intended to stay powered on, connected, and awake; a laptop that sleeps or
   loses home internet cannot provide durable public hosting.
 - Pick the production domain/subdomains and configure the Cloudflare Tunnel.
-- Create `/home/darian/.config/rendercart/.env` with production-only secrets
+- Create `/home/darian/rendercart-production.env` with production-only secrets
   and mode `0600`. Never put that file in the repository or Actions logs. Start from
   `.env.example`, use unique random values, and set `APP_ENV=production`,
   `APP_BASE_URL`, `S3_PROXY_SITE`, `S3_PUBLIC_ENDPOINT`, `UMAMI_BASE_URL`,
@@ -42,9 +42,9 @@ the host and is reached only through the tunnel.
    repository; enable Docker at boot. Confirm the host has adequate free disk,
    memory, cooling and uninterrupted power for Postgres, Redis, MinIO, web, API,
    analytics and workers.
-2. Create `/home/darian/.config/rendercart/` with mode `0700`, then create
-   `.env` there with mode `0600`. The deployment runner runs as `darian` and
-   reads this file directly; keep it out of the repository.
+2. Create `/home/darian/rendercart-production.env` with mode `0600`. Keep it
+   directly under the home directory because the host's snap-confined Docker
+   Compose cannot read from hidden paths below `~/.config`.
 3. Install the GitHub Actions runner under a dedicated non-login service
    account, configure it as a systemd service, and apply the `rendercart`
    label. Do not run a second runner job concurrently with production deploys.
@@ -69,7 +69,7 @@ the host and is reached only through the tunnel.
 
 `.github/workflows/deploy.yml` runs after the `CI` workflow succeeds for a push
 to `main`. It checks out that exact commit, checks the owner-only host
-environment file at `/home/darian/.config/rendercart/.env`, validates Compose configuration, builds images on the host, applies
+environment file at `/home/darian/rendercart-production.env`, validates Compose configuration, builds images on the host, applies
 Alembic migrations, and starts the stack. Persistent named
 volumes retain Postgres, Redis, MinIO, Caddy and Umami data across normal
 redeploys. The workflow uses a concurrency lock so deploys do not overlap.
