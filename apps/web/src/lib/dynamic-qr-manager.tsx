@@ -134,15 +134,15 @@ export function DynamicQrManager() {
 
   if (!signedIn) {
     return (
-      <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+      <section className="mt-8 rounded-2xl border border-line bg-surface p-6  ">
         <h2 className="text-xl font-semibold">
           Sign in to create a dynamic QR code
         </h2>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+        <p className="mt-2 text-sm text-muted ">
           Dynamic destinations and scan analytics belong to your account.
         </p>
         <Link
-          className="mt-4 inline-block rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white"
+          className="mt-4 inline-block rounded-xl bg-accent px-5 py-3 font-semibold text-white"
           href="/login"
         >
           Sign in
@@ -152,9 +152,9 @@ export function DynamicQrManager() {
   }
 
   return (
-    <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+    <section className="mt-8 rounded-2xl border border-line bg-surface p-6  ">
       <h2 className="text-xl font-semibold">Create an editable QR code</h2>
-      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+      <p className="mt-2 text-sm text-muted ">
         Your QR points to RenderCart first, so you can change its destination
         later. The destination is checked with Google Web Risk before it is
         saved.
@@ -165,7 +165,7 @@ export function DynamicQrManager() {
           <input
             required
             maxLength={80}
-            className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+            className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
             value={name}
             onChange={(event) => setName(event.target.value)}
           />
@@ -176,7 +176,7 @@ export function DynamicQrManager() {
             required
             type="url"
             maxLength={2048}
-            className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+            className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
             placeholder="https://example.com/page"
             value={targetUrl}
             onChange={(event) => setTargetUrl(event.target.value)}
@@ -185,14 +185,14 @@ export function DynamicQrManager() {
         <div className="flex gap-3">
           <button
             disabled={busy}
-            className="rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white disabled:opacity-50"
+            className="rounded-xl bg-accent px-5 py-3 font-semibold text-white disabled:opacity-50"
           >
             {busy ? "Saving…" : editing ? "Save destination" : "Create QR code"}
           </button>
           {editing && (
             <button
               type="button"
-              className="rounded-xl border border-slate-300 px-4 py-3"
+              className="rounded-xl border border-line-strong px-4 py-3"
               onClick={() => {
                 setEditing(null);
                 setName("");
@@ -205,10 +205,7 @@ export function DynamicQrManager() {
         </div>
       </form>
       {message && (
-        <p
-          role="status"
-          className="mt-4 text-sm text-slate-600 dark:text-slate-300"
-        >
+        <p role="status" className="mt-4 text-sm text-muted ">
           {message}
         </p>
       )}
@@ -216,7 +213,7 @@ export function DynamicQrManager() {
         {codes.map((code) => (
           <article
             key={code.id}
-            className="grid gap-5 rounded-xl border border-slate-200 p-4 sm:grid-cols-[160px_1fr] dark:border-slate-700"
+            className="grid gap-5 rounded-xl border border-line p-4 sm:grid-cols-[160px_1fr] "
           >
             {images[code.id] && (
               <Image
@@ -225,18 +222,18 @@ export function DynamicQrManager() {
                 width={160}
                 height={160}
                 unoptimized
-                className="h-40 w-40 bg-white p-2"
+                className="h-40 w-40 bg-surface p-2"
               />
             )}
             <div>
               <h3 className="font-semibold">{code.name}</h3>
-              <p className="mt-1 break-all text-sm text-slate-600 dark:text-slate-300">
+              <p className="mt-1 break-all text-sm text-muted ">
                 {code.target_url}
               </p>
               <p className="mt-2 text-sm">
                 {code.scan_count} scans · {code.enabled ? "Active" : "Disabled"}
               </p>
-              <div className="mt-3 flex flex-wrap gap-4 text-sm font-semibold text-violet-700 dark:text-violet-300">
+              <div className="mt-3 flex flex-wrap gap-4 text-sm font-semibold text-accent ">
                 <button
                   onClick={() => {
                     setEditing(code.id);

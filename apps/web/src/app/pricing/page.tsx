@@ -1,16 +1,137 @@
 import Link from "next/link";
-
-export const metadata = { title: "Pricing | RenderCart", description: "Choose free access, a day pass, or RenderCart Pro." };
-
+import { ArrowUpRight, Check } from "lucide-react";
+export const metadata = {
+  title: "Pricing | RenderCart",
+  description:
+    "Start free, get a day pass, or make room for more with RenderCart Pro.",
+};
+const plans = [
+  {
+    name: "Free",
+    note: "For the everyday things",
+    price: "$0",
+    cadence: "always",
+    copy: "A useful place to start. No card required.",
+    cta: "Explore free tools",
+    href: "/tools",
+    features: [
+      "Free browser tools",
+      "Daily allowance on file tools",
+      "Starter upload limits",
+    ],
+  },
+  {
+    name: "Pro",
+    note: "Room for your whole workflow",
+    price: "$9.99",
+    cadence: "per month",
+    copy: "More files, bigger ideas, fewer interruptions.",
+    cta: "Choose Pro",
+    href: "/account/billing",
+    features: [
+      "Higher file and usage limits",
+      "1,000 AI credits each month",
+      "Batch processing & priority queue",
+      "24-hour job file retention",
+      "Public API access",
+    ],
+  },
+  {
+    name: "Day pass",
+    note: "For the one big day",
+    price: "$2.99",
+    cadence: "one payment · 24 hours",
+    copy: "A little extra power, without a subscription.",
+    cta: "Get a day pass",
+    href: "/account/billing",
+    features: [
+      "Pro access for 24 hours",
+      "150 credits for your day",
+      "Higher upload limits",
+      "24-hour job file retention",
+    ],
+  },
+];
 export default function PricingPage() {
-  return <main className="mx-auto min-h-screen max-w-6xl px-6 py-10">
-    <Link href="/" className="font-bold">RenderCart</Link>
-    <header className="mx-auto mt-16 max-w-2xl text-center"><p className="text-sm font-semibold uppercase tracking-widest text-violet-600">Simple pricing</p><h1 className="mt-3 text-4xl font-semibold">Start free. Upgrade when you need more.</h1><p className="mt-4 text-slate-600 dark:text-slate-300">Free daily limits stay available. Paid access removes limits and unlocks higher file sizes.</p></header>
-    <div className="mx-auto mt-10 grid max-w-5xl gap-5 md:grid-cols-3">
-      <article className="rounded-3xl border border-slate-200 bg-white p-7 dark:border-slate-700 dark:bg-slate-900"><h2 className="text-xl font-semibold">Free</h2><p className="mt-3 text-4xl font-bold">$0</p><p className="mt-3 min-h-12 text-sm text-slate-600 dark:text-slate-300">A few jobs each day with starter file limits.</p><Link className="mt-7 inline-block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold dark:border-slate-600" href="/tools">Browse free tools</Link></article>
-      <article className="rounded-3xl border-2 border-violet-500 bg-white p-7 shadow-lg dark:bg-slate-900"><p className="text-sm font-semibold text-violet-600">Best value</p><h2 className="mt-2 text-xl font-semibold">Pro</h2><p className="mt-3 text-4xl font-bold">$9.99<span className="text-base font-normal text-slate-500"> / month</span></p><p className="mt-3 min-h-12 text-sm text-slate-600 dark:text-slate-300">All public tools, higher limits, and 1,000 monthly credits.</p><Link className="mt-7 inline-block rounded-xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white" href="/account/billing">Get Pro</Link></article>
-      <article className="rounded-3xl border border-slate-200 bg-white p-7 dark:border-slate-700 dark:bg-slate-900"><h2 className="text-xl font-semibold">Day pass</h2><p className="mt-3 text-4xl font-bold">$2.99<span className="text-base font-normal text-slate-500"> / day</span></p><p className="mt-3 min-h-12 text-sm text-slate-600 dark:text-slate-300">Short-term access for a busy day of work.</p><Link className="mt-7 inline-block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold dark:border-slate-600" href="/account/billing">Buy a day pass</Link></article>
-    </div>
-    <p className="mx-auto mt-8 max-w-3xl text-center text-sm text-slate-500">Single jobs are available at $0.99, $1.99, or $2.99 depending on the tool. Checkout opens from your account billing page.</p>
-  </main>;
+  return (
+    <main className="pricing-page">
+      <header className="pricing-heading">
+        <span className="eyebrow">A plan for your kind of day</span>
+        <h1>
+          Start small.
+          <br />
+          Make room for more.
+        </h1>
+        <p>
+          Keep the everyday tools free. Choose extra capacity when your work
+          calls for it.
+        </p>
+      </header>
+      <div className="pricing-grid">
+        {plans.map((plan) => (
+          <article
+            key={plan.name}
+            className={`price-card ${plan.name === "Pro" ? "recommended" : ""}`}
+          >
+            <span className="plan-note">{plan.note}</span>
+            <h2>{plan.name}</h2>
+            <div className="price-amount">
+              {plan.price} <span>{plan.cadence}</span>
+            </div>
+            <p>{plan.copy}</p>
+            <Link
+              className={`button ${plan.name === "Pro" ? "button-primary" : "button-secondary"}`}
+              href={plan.href}
+            >
+              {plan.cta}
+              <ArrowUpRight size={16} />
+            </Link>
+            <ul>
+              {plan.features.map((feature) => (
+                <li key={feature}>
+                  <Check size={15} />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+      <section className="pricing-faq">
+        <h2>A few useful details.</h2>
+        <details>
+          <summary>Can I just pay for one job?</summary>
+          <p>
+            Yes. Eligible tools offer a single-job purchase, usually $0.99,
+            $1.99, or $2.99. The tool shows its price before checkout, including
+            any configured price override.
+          </p>
+        </details>
+        <details>
+          <summary>What are credits used for?</summary>
+          <p>
+            Credits cover compute-heavy AI work. Each tool shows its cost before
+            you run it. Basic file tools and browser tools do not spend AI
+            credits. Monthly Pro credits reset each billing cycle; day-pass
+            credits expire with the pass.
+          </p>
+        </details>
+        <details>
+          <summary>Do I need an account to try RenderCart?</summary>
+          <p>
+            Browser tools work without an account. You can also try supported
+            file tools as a guest within their free limits. Create an account
+            for more daily capacity and job history.
+          </p>
+        </details>
+        <details>
+          <summary>How do I manage my subscription?</summary>
+          <p>
+            Open Billing and credits in your workspace, then choose Manage
+            subscription to use Stripe’s customer portal.
+          </p>
+        </details>
+      </section>
+    </main>
+  );
 }

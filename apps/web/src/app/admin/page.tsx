@@ -239,7 +239,10 @@ export default function AdminPage() {
     }
   }
 
-  async function saveToolPrice(event: FormEvent<HTMLFormElement>, tool: ToolRow) {
+  async function saveToolPrice(
+    event: FormEvent<HTMLFormElement>,
+    tool: ToolRow,
+  ) {
     event.preventDefault();
     const cents = Number(new FormData(event.currentTarget).get("price_cents"));
     if (!Number.isInteger(cents) || cents < 1 || !tool.job_tier) {
@@ -252,7 +255,9 @@ export default function AdminPage() {
       });
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not update price.");
+      setError(
+        cause instanceof Error ? cause.message : "Could not update price.",
+      );
     }
   }
 
@@ -265,7 +270,9 @@ export default function AdminPage() {
       );
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not update report.");
+      setError(
+        cause instanceof Error ? cause.message : "Could not update report.",
+      );
     }
   }
 
@@ -280,33 +287,51 @@ export default function AdminPage() {
       setError(`Dynamic QR code ${report.code} was disabled.`);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not disable QR code.");
+      setError(
+        cause instanceof Error ? cause.message : "Could not disable QR code.",
+      );
     }
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-6 py-10">
+    <main className="admin-page">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Link href="/" className="text-sm font-semibold text-violet-700">
-            ← RenderCart
+          <Link href="/account" className="text-sm font-semibold text-accent">
+            ← Workspace
           </Link>
-          <h1 className="mt-2 text-3xl font-semibold">Admin dashboard</h1>
+          <h1 className="mt-2 text-3xl font-semibold">Operations overview</h1>
         </div>
         <Link href="/account" className="text-sm font-semibold">
           Account
         </Link>
       </header>
+      {overview && (
+        <nav className="management-tabs" aria-label="Admin sections">
+          {[
+            ["workers", "Workers"],
+            ["users", "Users"],
+            ["tool-controls", "Tools"],
+            ["jobs", "Jobs"],
+            ["reports", "Reports"],
+            ["audit", "Audit log"],
+          ].map(([id, label]) => (
+            <a key={id} href={`#${id}`}>
+              {label}
+            </a>
+          ))}
+        </nav>
+      )}
       {error && (
         <p
           role="status"
-          className="mt-5 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+          className="mt-5 rounded-xl bg-amber-50 p-3 text-sm text-amber-900  "
         >
           {error}
         </p>
       )}
       {!overview ? (
-        <p className="mt-8 text-sm text-slate-500">
+        <p className="mt-8 text-sm text-muted">
           {error ? "Dashboard unavailable." : "Loading dashboard…"}
         </p>
       ) : (
@@ -330,80 +355,119 @@ export default function AdminPage() {
             ].map(([label, value]) => (
               <div
                 key={label}
-                className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900"
+                className="rounded-2xl border border-line bg-surface p-5  "
               >
-                <p className="text-sm text-slate-500">{label}</p>
+                <p className="text-sm text-muted">{label}</p>
                 <p className="mt-2 text-2xl font-semibold">{value}</p>
               </div>
             ))}
           </section>
           {gpuHealth && (
-            <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <section className="mt-8 rounded-2xl border border-line bg-surface p-5  ">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-semibold">GPU workers</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Worker status and queued GPU jobs; hardware readings require a private DCGM exporter URL.
+                  <h2 id="workers" className="text-xl font-semibold">
+                    GPU workers
+                  </h2>
+                  <p className="mt-1 text-sm text-muted">
+                    Worker status and queued GPU jobs; hardware readings require
+                    a private DCGM exporter URL.
                   </p>
                 </div>
                 <p className="text-sm font-medium">
-                  {gpuHealth.workers.status} · {gpuHealth.workers.gpu_workers.length} GPU worker(s)
+                  {gpuHealth.workers.status} ·{" "}
+                  {gpuHealth.workers.gpu_workers.length} GPU worker(s)
                   {gpuHealth.workers.queue_depth_total === null
                     ? " · queue depth unavailable"
                     : ` · ${gpuHealth.workers.queue_depth_total} queued`}
                 </p>
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                {Object.entries(gpuHealth.workers.queue_depths).map(([queue, depth]) => (
-                  <div key={queue} className="rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800">
-                    <p className="text-xs text-slate-500">{queue}</p>
-                    <p className="mt-1 font-semibold">{depth} waiting</p>
-                  </div>
-                ))}
+                {Object.entries(gpuHealth.workers.queue_depths).map(
+                  ([queue, depth]) => (
+                    <div
+                      key={queue}
+                      className="rounded-xl bg-canvas p-3 text-sm "
+                    >
+                      <p className="text-xs text-muted">{queue}</p>
+                      <p className="mt-1 font-semibold">{depth} waiting</p>
+                    </div>
+                  ),
+                )}
               </div>
               <div className="mt-5">
-                <h3 className="font-medium">Hardware telemetry · {gpuHealth.hardware.status}</h3>
+                <h3 className="font-medium">
+                  Hardware telemetry · {gpuHealth.hardware.status}
+                </h3>
                 {gpuHealth.hardware.devices.length ? (
                   <div className="mt-3 overflow-x-auto">
                     <table className="w-full min-w-[560px] text-left text-sm">
-                      <thead className="text-xs uppercase text-slate-500">
-                        <tr><th className="py-2">Device</th><th>GPU use</th><th>VRAM used</th><th>Temperature</th><th>Power</th></tr>
+                      <thead className="text-xs uppercase text-muted">
+                        <tr>
+                          <th className="py-2">Device</th>
+                          <th>GPU use</th>
+                          <th>VRAM used</th>
+                          <th>Temperature</th>
+                          <th>Power</th>
+                        </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                      <tbody className="divide-y divide-line ">
                         {gpuHealth.hardware.devices.map((device) => (
                           <tr key={String(device.device)}>
-                            <td className="py-2">{String(device.name)} · {String(device.device)}</td>
-                            <td>{device.utilization_percent === undefined ? "—" : `${device.utilization_percent}%`}</td>
-                            <td>{device.memory_used_mib === undefined ? "—" : `${device.memory_used_mib} MiB`}</td>
-                            <td>{device.temperature_celsius === undefined ? "—" : `${device.temperature_celsius}°C`}</td>
-                            <td>{device.power_watts === undefined ? "—" : `${device.power_watts} W`}</td>
+                            <td className="py-2">
+                              {String(device.name)} · {String(device.device)}
+                            </td>
+                            <td>
+                              {device.utilization_percent === undefined
+                                ? "—"
+                                : `${device.utilization_percent}%`}
+                            </td>
+                            <td>
+                              {device.memory_used_mib === undefined
+                                ? "—"
+                                : `${device.memory_used_mib} MiB`}
+                            </td>
+                            <td>
+                              {device.temperature_celsius === undefined
+                                ? "—"
+                                : `${device.temperature_celsius}°C`}
+                            </td>
+                            <td>
+                              {device.power_watts === undefined
+                                ? "—"
+                                : `${device.power_watts} W`}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <p className="mt-2 text-sm text-slate-500">No hardware readings available.</p>
+                  <p className="mt-2 text-sm text-muted">
+                    No hardware readings available.
+                  </p>
                 )}
               </div>
             </section>
           )}
-          <section className="mt-10 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-            <h2 className="text-xl font-semibold">Users</h2>
+          <section className="mt-10 rounded-2xl border border-line bg-surface p-5  ">
+            <h2 id="users" className="text-xl font-semibold">
+              Users
+            </h2>
             <form onSubmit={searchUsers} className="mt-4 flex gap-3">
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search email or name"
-                className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-600"
+                className="min-w-0 flex-1 rounded-xl border border-line-strong bg-transparent px-3 py-2 "
               />
-              <button className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white">
+              <button className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white">
                 Search
               </button>
             </form>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-500">
+                <thead className="text-xs uppercase text-muted">
                   <tr>
                     <th className="py-2">Account</th>
                     <th>Access</th>
@@ -411,14 +475,14 @@ export default function AdminPage() {
                     <th>Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                <tbody className="divide-y divide-line ">
                   {users.map((user) => (
                     <tr key={user.id}>
                       <td className="py-3">
                         <p className="font-medium">
                           {user.display_name || user.email}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-muted">
                           {user.email} ·{" "}
                           {user.email_verified ? "verified" : "unverified"}
                         </p>
@@ -436,14 +500,14 @@ export default function AdminPage() {
                           <button
                             type="button"
                             onClick={() => void toggleBan(user)}
-                            className="font-semibold text-violet-700"
+                            className="font-semibold text-accent"
                           >
                             {user.is_banned ? "Unban" : "Ban"}
                           </button>
                           <button
                             type="button"
                             onClick={() => void grantCredits(user)}
-                            className="font-semibold text-violet-700"
+                            className="font-semibold text-accent"
                           >
                             Grant 10 credits
                           </button>
@@ -452,7 +516,7 @@ export default function AdminPage() {
                               <button
                                 type="button"
                                 onClick={() => void toggleRole(user)}
-                                className="font-semibold text-violet-700"
+                                className="font-semibold text-accent"
                               >
                                 {user.staff_role === "admin"
                                   ? "Remove admin"
@@ -468,9 +532,11 @@ export default function AdminPage() {
             </div>
           </section>
           <section className="mt-8 grid gap-8 lg:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-              <h2 className="text-xl font-semibold">Tool controls</h2>
-              <ul className="mt-3 divide-y divide-slate-200 dark:divide-slate-700">
+            <div className="rounded-2xl border border-line bg-surface p-5  ">
+              <h2 id="tool-controls" className="text-xl font-semibold">
+                Tool controls
+              </h2>
+              <ul className="mt-3 divide-y divide-line ">
                 {tools.map((tool) => (
                   <li
                     key={tool.slug}
@@ -478,7 +544,7 @@ export default function AdminPage() {
                   >
                     <span>
                       <strong>{tool.name}</strong>
-                      <span className="ml-2 text-xs text-slate-500">
+                      <span className="ml-2 text-xs text-muted">
                         {tool.slug}
                       </span>
                     </span>
@@ -486,29 +552,44 @@ export default function AdminPage() {
                       <button
                         type="button"
                         onClick={() => void toggleTool(tool)}
-                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold dark:border-slate-600"
+                        className="rounded-lg border border-line-strong px-3 py-1.5 text-xs font-semibold "
                       >
                         {tool.enabled ? "Enabled" : "Disabled"}
                       </button>
                       {tool.job_tier && (
                         <details className="relative">
-                          <summary className="cursor-pointer text-xs font-semibold text-violet-700">
-                            {tool.prices[`job_${tool.job_tier.toLowerCase()}`] ?? tool.single_job_price_cents ?? 0}¢
+                          <summary className="cursor-pointer text-xs font-semibold text-accent">
+                            {tool.prices[
+                              `job_${tool.job_tier.toLowerCase()}`
+                            ] ??
+                              tool.single_job_price_cents ??
+                              0}
+                            ¢
                           </summary>
                           <form
-                            onSubmit={(event) => void saveToolPrice(event, tool)}
-                            className="absolute right-0 z-10 mt-2 flex w-52 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                            onSubmit={(event) =>
+                              void saveToolPrice(event, tool)
+                            }
+                            className="absolute right-0 z-10 mt-2 flex w-52 gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg  "
                           >
                             <input
                               name="price_cents"
                               type="number"
                               min="1"
                               step="1"
-                              defaultValue={String(tool.prices[`job_${tool.job_tier.toLowerCase()}`] ?? tool.single_job_price_cents ?? "")}
+                              defaultValue={String(
+                                tool.prices[
+                                  `job_${tool.job_tier.toLowerCase()}`
+                                ] ??
+                                  tool.single_job_price_cents ??
+                                  "",
+                              )}
                               aria-label={`Single job price in cents for ${tool.name}`}
-                              className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-600"
+                              className="min-w-0 flex-1 rounded-lg border border-line-strong bg-transparent px-2 py-1.5 text-sm "
                             />
-                            <button className="rounded-lg bg-violet-600 px-2 py-1.5 text-xs font-semibold text-white">Save</button>
+                            <button className="rounded-lg bg-accent px-2 py-1.5 text-xs font-semibold text-white">
+                              Save
+                            </button>
                           </form>
                         </details>
                       )}
@@ -517,9 +598,11 @@ export default function AdminPage() {
                 ))}
               </ul>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-              <h2 className="text-xl font-semibold">Recent jobs</h2>
-              <ul className="mt-3 divide-y divide-slate-200 dark:divide-slate-700">
+            <div className="rounded-2xl border border-line bg-surface p-5  ">
+              <h2 id="jobs" className="text-xl font-semibold">
+                Recent jobs
+              </h2>
+              <ul className="mt-3 divide-y divide-line ">
                 {jobs.slice(0, 25).map((job) => (
                   <li
                     key={job.job_id}
@@ -528,7 +611,7 @@ export default function AdminPage() {
                     <span>
                       {job.tool_slug} · {job.state}
                     </span>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-muted">
                       {job.progress}% ·{" "}
                       {job.error_code || job.job_id.slice(0, 8)}
                     </span>
@@ -537,23 +620,35 @@ export default function AdminPage() {
               </ul>
             </div>
           </section>
-          <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-            <h2 className="text-xl font-semibold">Abuse reports</h2>
+          <section className="mt-8 rounded-2xl border border-line bg-surface p-5  ">
+            <h2 id="reports" className="text-xl font-semibold">
+              Abuse reports
+            </h2>
             {reports.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No QR abuse reports have been submitted.</p>
+              <p className="mt-3 text-sm text-muted">
+                No QR abuse reports have been submitted.
+              </p>
             ) : (
-              <ul className="mt-3 divide-y divide-slate-200 dark:divide-slate-700">
+              <ul className="mt-3 divide-y divide-line ">
                 {reports.map((report) => (
-                  <li key={report.id} className="flex flex-wrap items-start justify-between gap-4 py-4">
+                  <li
+                    key={report.id}
+                    className="flex flex-wrap items-start justify-between gap-4 py-4"
+                  >
                     <div className="min-w-0">
                       <p className="font-medium">
                         QR {report.code} · {report.status}
                       </p>
-                      <p className="mt-1 break-all text-sm text-slate-500">{report.target_url}</p>
-                      {report.message && <p className="mt-2 text-sm">{report.message}</p>}
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 break-all text-sm text-muted">
+                        {report.target_url}
+                      </p>
+                      {report.message && (
+                        <p className="mt-2 text-sm">{report.message}</p>
+                      )}
+                      <p className="mt-1 text-xs text-muted">
                         Reported {new Date(report.created_at).toLocaleString()}
-                        {report.resolved_at && ` · Resolved ${new Date(report.resolved_at).toLocaleString()}`}
+                        {report.resolved_at &&
+                          ` · Resolved ${new Date(report.resolved_at).toLocaleString()}`}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -561,17 +656,24 @@ export default function AdminPage() {
                         <button
                           type="button"
                           onClick={() => void disableReportedCode(report)}
-                          className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 dark:border-red-800 dark:text-red-300"
+                          className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700  "
                         >
                           Disable QR code
                         </button>
                       )}
                       <button
                         type="button"
-                        onClick={() => void setReportResolved(report, report.status !== "resolved")}
-                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-600"
+                        onClick={() =>
+                          void setReportResolved(
+                            report,
+                            report.status !== "resolved",
+                          )
+                        }
+                        className="rounded-lg border border-line-strong px-3 py-1.5 text-sm "
                       >
-                        {report.status === "resolved" ? "Reopen" : "Mark resolved"}
+                        {report.status === "resolved"
+                          ? "Reopen"
+                          : "Mark resolved"}
                       </button>
                     </div>
                   </li>
@@ -579,13 +681,15 @@ export default function AdminPage() {
               </ul>
             )}
           </section>
-          <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-            <h2 className="text-xl font-semibold">Audit log</h2>
-            <ul className="mt-3 divide-y divide-slate-200 dark:divide-slate-700">
+          <section className="mt-8 rounded-2xl border border-line bg-surface p-5  ">
+            <h2 id="audit" className="text-xl font-semibold">
+              Audit log
+            </h2>
+            <ul className="mt-3 divide-y divide-line ">
               {audit.slice(0, 30).map((row) => (
                 <li key={row.id} className="py-3 text-sm">
                   <span className="font-medium">{row.action}</span>
-                  <span className="ml-2 text-slate-500">
+                  <span className="ml-2 text-muted">
                     {row.target || ""} ·{" "}
                     {new Date(row.created_at).toLocaleString()}
                   </span>

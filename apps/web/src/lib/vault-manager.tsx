@@ -11,10 +11,18 @@ type VaultItem = {
   size_bytes?: number;
 };
 
-async function secureRequest(path: string, method: "POST" | "DELETE", body?: object) {
-  const csrfResponse = await fetch("/api/auth/csrf", { credentials: "include" });
+async function secureRequest(
+  path: string,
+  method: "POST" | "DELETE",
+  body?: object,
+) {
+  const csrfResponse = await fetch("/api/auth/csrf", {
+    credentials: "include",
+  });
   if (!csrfResponse.ok) throw new Error("Could not start a secure request.");
-  const { csrf_token: csrf } = (await csrfResponse.json()) as { csrf_token: string };
+  const { csrf_token: csrf } = (await csrfResponse.json()) as {
+    csrf_token: string;
+  };
   const response = await fetch(path, {
     method,
     credentials: "include",
@@ -22,7 +30,9 @@ async function secureRequest(path: string, method: "POST" | "DELETE", body?: obj
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as { detail?: string };
+    const payload = (await response.json().catch(() => ({}))) as {
+      detail?: string;
+    };
     throw new Error(payload.detail ?? "The Vault request failed.");
   }
   return response.status === 204 ? null : response.json();
@@ -45,7 +55,10 @@ export default function VaultManager() {
   const [notice, setNotice] = useState("");
 
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/vault", { credentials: "include", cache: "no-store" });
+    const response = await fetch("/api/vault", {
+      credentials: "include",
+      cache: "no-store",
+    });
     if (!response.ok) throw new Error("Vault is unavailable.");
     const data = (await response.json()) as {
       short_links: VaultItem[];
@@ -59,7 +72,9 @@ export default function VaultManager() {
 
   useEffect(() => {
     void refresh().catch((cause: unknown) =>
-      setError(cause instanceof Error ? cause.message : "Vault is unavailable."),
+      setError(
+        cause instanceof Error ? cause.message : "Vault is unavailable.",
+      ),
     );
   }, [refresh]);
 
@@ -78,7 +93,11 @@ export default function VaultManager() {
       await navigator.clipboard.writeText(created.url);
       setNotice("Short link created and copied to your clipboard.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create the short link.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not create the short link.",
+      );
     } finally {
       setBusy(false);
     }
@@ -99,7 +118,11 @@ export default function VaultManager() {
       await navigator.clipboard.writeText(created.url);
       setNotice("Text share created and copied to your clipboard.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create the text share.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not create the text share.",
+      );
     } finally {
       setBusy(false);
     }
@@ -112,9 +135,14 @@ export default function VaultManager() {
     setError("");
     setNotice("");
     try {
-      const csrfResponse = await fetch("/api/auth/csrf", { credentials: "include" });
-      if (!csrfResponse.ok) throw new Error("Could not start a secure request.");
-      const { csrf_token: csrf } = (await csrfResponse.json()) as { csrf_token: string };
+      const csrfResponse = await fetch("/api/auth/csrf", {
+        credentials: "include",
+      });
+      if (!csrfResponse.ok)
+        throw new Error("Could not start a secure request.");
+      const { csrf_token: csrf } = (await csrfResponse.json()) as {
+        csrf_token: string;
+      };
       const response = await fetch("/api/vault/files", {
         method: "PUT",
         credentials: "include",
@@ -127,7 +155,9 @@ export default function VaultManager() {
         body: file,
       });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { detail?: string };
+        const payload = (await response.json().catch(() => ({}))) as {
+          detail?: string;
+        };
         throw new Error(payload.detail ?? "Could not create the file share.");
       }
       const created = (await response.json()) as VaultItem;
@@ -136,13 +166,20 @@ export default function VaultManager() {
       await navigator.clipboard.writeText(created.url);
       setNotice("Encrypted file share created and copied to your clipboard.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create the file share.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not create the file share.",
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  async function remove(kind: "short-links" | "pastes" | "files", item: VaultItem) {
+  async function remove(
+    kind: "short-links" | "pastes" | "files",
+    item: VaultItem,
+  ) {
     setError("");
     setNotice("");
     try {
@@ -150,7 +187,9 @@ export default function VaultManager() {
       await refresh();
       setNotice("Item deleted.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not delete this item.");
+      setError(
+        cause instanceof Error ? cause.message : "Could not delete this item.",
+      );
     }
   }
 
@@ -165,12 +204,30 @@ export default function VaultManager() {
 
   return (
     <section className="mt-8 space-y-8">
-      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-      {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+      {error && (
+        <p
+          role="alert"
+          className="rounded-xl bg-red-50 p-3 text-sm text-red-800"
+        >
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p
+          role="status"
+          className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"
+        >
+          {notice}
+        </p>
+      )}
 
       <label className="block max-w-xs text-sm font-semibold">
         Expiration
-        <select value={ttl} onChange={(event) => setTtl(Number(event.target.value))} className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-600">
+        <select
+          value={ttl}
+          onChange={(event) => setTtl(Number(event.target.value))}
+          className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 "
+        >
           <option value={3600}>1 hour</option>
           <option value={86400}>1 day</option>
           <option value={604800}>7 days</option>
@@ -179,35 +236,98 @@ export default function VaultManager() {
       </label>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <form onSubmit={(event) => void createLink(event)} className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700">
+        <form
+          onSubmit={(event) => void createLink(event)}
+          className="rounded-2xl border border-line p-5 "
+        >
           <h2 className="text-lg font-semibold">Temporary short link</h2>
-          <label className="mt-4 block text-sm font-medium">Destination URL
-            <input type="url" required maxLength={2048} value={target} onChange={(event) => setTarget(event.target.value)} placeholder="https://example.com/page" className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-600" />
+          <label className="mt-4 block text-sm font-medium">
+            Destination URL
+            <input
+              type="url"
+              required
+              maxLength={2048}
+              value={target}
+              onChange={(event) => setTarget(event.target.value)}
+              placeholder="https://example.com/page"
+              className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 "
+            />
           </label>
-          <button disabled={busy} className="mt-4 rounded-xl bg-violet-600 px-4 py-2 font-semibold text-white disabled:opacity-50">Create short link</button>
+          <button
+            disabled={busy}
+            className="mt-4 rounded-xl bg-accent px-4 py-2 font-semibold text-white disabled:opacity-50"
+          >
+            Create short link
+          </button>
         </form>
 
-        <form onSubmit={(event) => void createPaste(event)} className="rounded-2xl border border-slate-200 p-5 dark:border-slate-700">
+        <form
+          onSubmit={(event) => void createPaste(event)}
+          className="rounded-2xl border border-line p-5 "
+        >
           <h2 className="text-lg font-semibold">Temporary text share</h2>
-          <label className="mt-4 block text-sm font-medium">Text (up to 20,000 characters)
-            <textarea required maxLength={20_000} value={content} onChange={(event) => setContent(event.target.value)} className="mt-2 block min-h-32 w-full rounded-xl border border-slate-300 bg-transparent p-3 font-normal dark:border-slate-600" />
+          <label className="mt-4 block text-sm font-medium">
+            Text (up to 20,000 characters)
+            <textarea
+              required
+              maxLength={20_000}
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              className="mt-2 block min-h-32 w-full rounded-xl border border-line-strong bg-transparent p-3 font-normal "
+            />
           </label>
-          <button disabled={busy} className="mt-4 rounded-xl bg-violet-600 px-4 py-2 font-semibold text-white disabled:opacity-50">Create text share</button>
+          <button
+            disabled={busy}
+            className="mt-4 rounded-xl bg-accent px-4 py-2 font-semibold text-white disabled:opacity-50"
+          >
+            Create text share
+          </button>
         </form>
       </div>
 
-      <form onSubmit={(event) => void createFile(event)} className="max-w-2xl rounded-2xl border border-slate-200 p-5 dark:border-slate-700">
+      <form
+        onSubmit={(event) => void createFile(event)}
+        className="max-w-2xl rounded-2xl border border-line p-5 "
+      >
         <h2 className="text-lg font-semibold">Temporary file share</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Files up to 25 MB are encrypted before they are stored.</p>
-        <label className="mt-4 block text-sm font-medium">Choose a file
-          <input type="file" required onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="mt-2 block w-full text-sm" />
+        <p className="mt-1 text-sm text-muted ">
+          Files up to 25 MB are encrypted before they are stored.
+        </p>
+        <label className="mt-4 block text-sm font-medium">
+          Choose a file
+          <input
+            type="file"
+            required
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            className="mt-2 block w-full text-sm"
+          />
         </label>
-        <button disabled={busy || !file || file.size > 25 * 1024 * 1024} className="mt-4 rounded-xl bg-violet-600 px-4 py-2 font-semibold text-white disabled:opacity-50">Create encrypted file share</button>
+        <button
+          disabled={busy || !file || file.size > 25 * 1024 * 1024}
+          className="mt-4 rounded-xl bg-accent px-4 py-2 font-semibold text-white disabled:opacity-50"
+        >
+          Create encrypted file share
+        </button>
       </form>
 
-      <ItemList title="Short links" items={links} onCopy={copy} onDelete={(item) => remove("short-links", item)} />
-      <ItemList title="Text shares" items={pastes} onCopy={copy} onDelete={(item) => remove("pastes", item)} />
-      <ItemList title="File shares" items={files} onCopy={copy} onDelete={(item) => remove("files", item)} />
+      <ItemList
+        title="Short links"
+        items={links}
+        onCopy={copy}
+        onDelete={(item) => remove("short-links", item)}
+      />
+      <ItemList
+        title="Text shares"
+        items={pastes}
+        onCopy={copy}
+        onDelete={(item) => remove("pastes", item)}
+      />
+      <ItemList
+        title="File shares"
+        items={files}
+        onCopy={copy}
+        onDelete={(item) => remove("files", item)}
+      />
     </section>
   );
 }
@@ -226,18 +346,49 @@ function ItemList({
   return (
     <section>
       <h2 className="text-lg font-semibold">{title}</h2>
-      {items.length === 0 ? <p className="mt-2 text-sm text-slate-500">No active items.</p> : (
-        <ul className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
+      {items.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">No active items.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-line rounded-xl border border-line  ">
           {items.map((item) => (
-            <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <li
+              key={item.id}
+              className="flex flex-wrap items-center justify-between gap-3 p-4"
+            >
               <div className="min-w-0">
-                <a href={item.url} target="_blank" rel="noreferrer" className="break-all font-medium text-violet-700 underline dark:text-violet-300">{item.url}</a>
-                {item.filename && <p className="mt-1 break-all text-sm">{item.filename} · {Math.ceil((item.size_bytes ?? 0) / 1024)} KB</p>}
-                <p className="mt-1 text-xs text-slate-500">Expires {formatExpiry(item.expires_at)}</p>
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-all font-medium text-accent underline "
+                >
+                  {item.url}
+                </a>
+                {item.filename && (
+                  <p className="mt-1 break-all text-sm">
+                    {item.filename} · {Math.ceil((item.size_bytes ?? 0) / 1024)}{" "}
+                    KB
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-muted">
+                  Expires {formatExpiry(item.expires_at)}
+                </p>
               </div>
               <div className="flex gap-2">
-                <button type="button" onClick={() => onCopy(item.url)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600">Copy</button>
-                <button type="button" onClick={() => onDelete(item)} className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:text-red-300">Delete</button>
+                <button
+                  type="button"
+                  onClick={() => onCopy(item.url)}
+                  className="rounded-lg border border-line-strong px-3 py-2 text-sm "
+                >
+                  Copy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(item)}
+                  className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700  "
+                >
+                  Delete
+                </button>
               </div>
             </li>
           ))}

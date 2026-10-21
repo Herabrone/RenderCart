@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { FileDropzone } from "@/components/file-dropzone";
 import { PdfOrganizer } from "@/lib/pdf-organizer";
 import { ESignDraft, PdfESign } from "@/lib/pdf-esign";
 import { createEditedPdf, PdfEditDraft, PdfEditor } from "@/lib/pdf-editor";
@@ -193,7 +194,7 @@ export function JobRunner({
     email: "",
     phone: "",
     website: "",
-    accent_color: "#4f46e5",
+    accent_color: "#b94324",
   });
   const [resumeDraft, setResumeDraft] = useState<ResumeDraft>({
     name: "",
@@ -208,7 +209,8 @@ export function JobRunner({
     skills: "",
     cover_letter: "",
   });
-  const [resumeTemplate, setResumeTemplate] = useState<ResumeTemplate>("classic");
+  const [resumeTemplate, setResumeTemplate] =
+    useState<ResumeTemplate>("classic");
   const [resumeRewriteWithAi, setResumeRewriteWithAi] = useState(false);
   const isPdfOrganizer = tool?.slug === "organize-pdf";
   const isESign = tool?.slug === "esign-pdf";
@@ -381,7 +383,7 @@ export function JobRunner({
       email: "",
       phone: "",
       website: "",
-      accent_color: "#4f46e5",
+      accent_color: "#b94324",
     });
     setResumeDraft({
       name: "",
@@ -763,7 +765,10 @@ export function JobRunner({
     }
     setBusy(true);
     setMessage("");
-    trackRenderCartEvent("paywall-checkout-click", { tool: tool?.slug ?? "unknown", product });
+    trackRenderCartEvent("paywall-checkout-click", {
+      tool: tool?.slug ?? "unknown",
+      product,
+    });
     try {
       const token = await csrfToken();
       const options = buildOptions();
@@ -848,23 +853,38 @@ export function JobRunner({
 
   if (jobId) {
     return (
-      <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
-        <p className="font-medium">
+      <div className="mt-8 rounded-2xl border border-line bg-surface p-6  ">
+        <p role="status" aria-live="polite" className="text-xl font-semibold">
           {job
-            ? job.state[0].toUpperCase() + job.state.slice(1)
+            ? ({
+                succeeded: "Your result is ready",
+                failed: "This job couldn’t finish",
+                expired: "These files have expired",
+                cancelled: "Job cancelled",
+                awaiting_payment: "Waiting for payment",
+                queued: "In the queue",
+                running: "Working on your files",
+              }[job.state] ?? job.state.replaceAll("_", " "))
             : "Loading job…"}
         </p>
         {job && (
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+          <div
+            role="progressbar"
+            aria-label="Job progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.min(100, Math.max(0, job.progress))}
+            className="mt-4 h-2 overflow-hidden rounded-full bg-subtle "
+          >
             <div
-              className="h-full bg-violet-600 transition-all"
-              style={{ width: `${job.progress}%` }}
+              className="h-full bg-accent transition-all"
+              style={{ width: `${Math.min(100, Math.max(0, job.progress))}%` }}
             />
           </div>
         )}
         {job?.download_url && (
           <a
-            className="mt-5 inline-flex rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white"
+            className="mt-5 inline-flex rounded-xl bg-accent px-5 py-3 font-semibold text-white"
             href={job.download_url}
           >
             Download result
@@ -874,9 +894,9 @@ export function JobRunner({
           <PdfChatPanel jobId={job.job_id} />
         )}
         {job?.locked_preview && (
-          <div className="mt-5 rounded-xl bg-violet-50 p-4 dark:bg-violet-950">
+          <div className="mt-5 rounded-xl bg-accent-soft p-4 ">
             <p className="font-semibold">Your full result is ready</p>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            <p className="mt-1 text-sm text-muted ">
               {job.tool_slug === "edit-pdf"
                 ? "The free PDF is watermarked. Unlock a clean edited PDF with a one-time payment."
                 : "The preview is free. Unlock the original-resolution PNG with a one-time payment."}
@@ -885,14 +905,14 @@ export function JobRunner({
               <button
                 disabled={busy}
                 onClick={() => void purchasePreviewUnlock()}
-                className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="mt-3 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 Unlock full resolution · one-time payment
               </button>
             )}
             {!job.can_unlock && (
               <Link
-                className="mt-3 inline-block text-sm font-semibold text-violet-700 dark:text-violet-300"
+                className="mt-3 inline-block text-sm font-semibold text-accent "
                 href={`/login?next=/jobs/${job.job_id}`}
               >
                 Sign in to unlock
@@ -917,11 +937,23 @@ export function JobRunner({
         ) : (
           job?.error_code && (
             <p className="mt-4 text-sm text-red-600">
-              The job failed ({job.error_code}). Please try again.
+              We couldn’t finish this job. Return to the tool and try again.
             </p>
           )
         )}
-        {message && <p className="mt-4 text-sm text-red-600">{message}</p>}
+        {job && ["failed", "expired", "cancelled"].includes(job.state) && (
+          <Link
+            className="mt-5 inline-flex text-sm font-semibold text-accent"
+            href={`/tools/${job.tool_slug}`}
+          >
+            Return to the tool →
+          </Link>
+        )}
+        {message && (
+          <p role="alert" className="mt-4 text-sm text-red-600">
+            {message}
+          </p>
+        )}
       </div>
     );
   }
@@ -930,7 +962,8 @@ export function JobRunner({
   const paidTier = tool.job_tier ?? "S";
   const paidProduct = `job_${paidTier.toLowerCase()}` as
     "job_s" | "job_m" | "job_l";
-  const configuredPrice = tool.prices?.[paidProduct] ?? tool.single_job_price_cents;
+  const configuredPrice =
+    tool.prices?.[paidProduct] ?? tool.single_job_price_cents;
   const paidPrice =
     typeof configuredPrice === "number"
       ? `$${(configuredPrice / 100).toFixed(2)}`
@@ -952,33 +985,28 @@ export function JobRunner({
     0,
   );
   return (
-    <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+    <div className="mt-8 rounded-2xl border border-line bg-surface p-6  ">
       {!isInvoiceGenerator && !isBusinessCard && !isResumeBuilder && (
-        <label className="block text-sm font-semibold">
-          {tool.inputs.min_files === 0
-            ? "Choose a file (optional when text or URL is provided)"
-            : "Choose files"}
-          <input
-            className="mt-3 block w-full rounded-xl border border-slate-300 p-3 text-sm dark:border-slate-600"
-            type="file"
-            multiple={
-              !isESign &&
-              !isPdfEdit &&
-              (tool.batchable ||
-                tool.slug === "merge-pdf" ||
-                tool.slug === "image-to-pdf" ||
-                tool.slug === "video-merger")
-            }
-            accept={tool.inputs.accept.join(",")}
-            onChange={(event) => {
-              setFiles(Array.from(event.target.files ?? []));
-              setUploadedIds([]);
-              setEsignDraft(null);
-              setPdfEditDraft(null);
-              setVideoTrimReady(false);
-            }}
-          />
-        </label>
+        <FileDropzone
+          files={files}
+          accept={tool.inputs.accept.join(",")}
+          disabled={busy}
+          multiple={
+            !isESign &&
+            !isPdfEdit &&
+            !!(
+              tool.batchable ||
+              ["merge-pdf", "image-to-pdf", "video-merger"].includes(tool.slug)
+            )
+          }
+          onChange={(next) => {
+            setFiles(next);
+            setUploadedIds([]);
+            setEsignDraft(null);
+            setPdfEditDraft(null);
+            setVideoTrimReady(false);
+          }}
+        />
       )}
       {isInvoiceGenerator && (
         <div className="mt-4 space-y-5">
@@ -986,7 +1014,7 @@ export function JobRunner({
             <label className="text-sm font-semibold">
               Document type
               <select
-                className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                 value={invoiceDraft.document_type}
                 onChange={(event) =>
                   setInvoiceDraft((current) => ({
@@ -1006,7 +1034,7 @@ export function JobRunner({
                 Number
                 <button
                   type="button"
-                  className="text-xs font-semibold text-violet-700"
+                  className="text-xs font-semibold text-accent"
                   onClick={() => {
                     void (async () => {
                       try {
@@ -1055,7 +1083,7 @@ export function JobRunner({
               <input
                 required
                 maxLength={40}
-                className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                 value={invoiceDraft.number}
                 onChange={(event) =>
                   setInvoiceDraft((current) => ({
@@ -1068,7 +1096,7 @@ export function JobRunner({
             <label className="text-sm font-semibold">
               Currency
               <select
-                className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                 value={invoiceDraft.currency}
                 onChange={(event) =>
                   setInvoiceDraft((current) => ({
@@ -1096,7 +1124,7 @@ export function JobRunner({
               Issue date
               <input
                 type="date"
-                className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                 value={invoiceDraft.issued_on}
                 onChange={(event) =>
                   setInvoiceDraft((current) => ({
@@ -1110,7 +1138,7 @@ export function JobRunner({
               Due date
               <input
                 type="date"
-                className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                 value={invoiceDraft.due_on}
                 onChange={(event) =>
                   setInvoiceDraft((current) => ({
@@ -1127,7 +1155,7 @@ export function JobRunner({
                 min="0"
                 max="100"
                 step="0.01"
-                className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                 value={invoiceDraft.tax_percent}
                 onChange={(event) =>
                   setInvoiceDraft((current) => ({
@@ -1152,7 +1180,7 @@ export function JobRunner({
                       : "Address"}
                   {key === "business_address" ? (
                     <textarea
-                      className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent p-3 font-normal dark:border-slate-600"
+                      className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent p-3 font-normal "
                       value={invoiceDraft[key]}
                       onChange={(event) =>
                         setInvoiceDraft((current) => ({
@@ -1165,7 +1193,7 @@ export function JobRunner({
                     <input
                       type={key === "business_email" ? "email" : "text"}
                       required={key === "business_name"}
-                      className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                      className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                       value={invoiceDraft[key]}
                       onChange={(event) =>
                         setInvoiceDraft((current) => ({
@@ -1184,7 +1212,7 @@ export function JobRunner({
                 <label className="block text-sm font-medium">
                   Use saved customer
                   <select
-                    className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-600"
+                    className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 "
                     defaultValue=""
                     onChange={(event) => {
                       const selected = savedClients.find(
@@ -1218,7 +1246,7 @@ export function JobRunner({
                         : "Address"}
                     {key === "client_address" ? (
                       <textarea
-                        className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent p-3 font-normal dark:border-slate-600"
+                        className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent p-3 font-normal "
                         value={invoiceDraft[key]}
                         onChange={(event) =>
                           setInvoiceDraft((current) => ({
@@ -1231,7 +1259,7 @@ export function JobRunner({
                       <input
                         type={key === "client_email" ? "email" : "text"}
                         required={key === "client_name"}
-                        className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                        className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                         value={invoiceDraft[key]}
                         onChange={(event) =>
                           setInvoiceDraft((current) => ({
@@ -1246,7 +1274,7 @@ export function JobRunner({
               )}
               <button
                 type="button"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold dark:border-slate-600"
+                className="rounded-lg border border-line-strong px-3 py-2 text-xs font-semibold "
                 onClick={() => {
                   setInvoiceSaveMessage("");
                   void saveInvoiceRecord("clients", {
@@ -1280,7 +1308,7 @@ export function JobRunner({
               {savedInvoiceItems.length > 0 && (
                 <select
                   aria-label="Add a saved item"
-                  className="rounded-lg border border-slate-300 bg-transparent px-2 py-2 text-xs dark:border-slate-600"
+                  className="rounded-lg border border-line-strong bg-transparent px-2 py-2 text-xs "
                   defaultValue=""
                   onChange={(event) => {
                     const selected = savedInvoiceItems.find(
@@ -1308,7 +1336,7 @@ export function JobRunner({
               )}
               <button
                 type="button"
-                className="text-sm font-semibold text-violet-700"
+                className="text-sm font-semibold text-accent"
                 onClick={() =>
                   setInvoiceItems((items) => [
                     ...items,
@@ -1323,12 +1351,12 @@ export function JobRunner({
               {invoiceItems.map((item, index) => (
                 <div
                   key={index}
-                  className="grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-[1fr_100px_140px_auto] dark:bg-slate-800"
+                  className="grid gap-3 rounded-xl bg-canvas p-3 sm:grid-cols-[1fr_100px_140px_auto] "
                 >
                   <label className="text-xs font-semibold">
                     Description
                     <input
-                      className="mt-1 block w-full rounded-lg border border-slate-300 bg-transparent px-2 py-2 text-sm font-normal dark:border-slate-600"
+                      className="mt-1 block w-full rounded-lg border border-line-strong bg-transparent px-2 py-2 text-sm font-normal "
                       value={item.description}
                       onChange={(event) =>
                         setInvoiceItems((items) =>
@@ -1347,7 +1375,7 @@ export function JobRunner({
                       type="number"
                       min="0.001"
                       step="0.001"
-                      className="mt-1 block w-full rounded-lg border border-slate-300 bg-transparent px-2 py-2 text-sm font-normal dark:border-slate-600"
+                      className="mt-1 block w-full rounded-lg border border-line-strong bg-transparent px-2 py-2 text-sm font-normal "
                       value={item.quantity}
                       onChange={(event) =>
                         setInvoiceItems((items) =>
@@ -1366,7 +1394,7 @@ export function JobRunner({
                       type="number"
                       min="0"
                       step="0.01"
-                      className="mt-1 block w-full rounded-lg border border-slate-300 bg-transparent px-2 py-2 text-sm font-normal dark:border-slate-600"
+                      className="mt-1 block w-full rounded-lg border border-line-strong bg-transparent px-2 py-2 text-sm font-normal "
                       value={item.unit_price}
                       onChange={(event) =>
                         setInvoiceItems((items) =>
@@ -1383,7 +1411,7 @@ export function JobRunner({
                     type="button"
                     aria-label="Remove line item"
                     disabled={invoiceItems.length === 1}
-                    className="self-end rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-40"
+                    className="self-end rounded-lg border border-line-strong px-3 py-2 text-sm disabled:opacity-40"
                     onClick={() =>
                       setInvoiceItems((items) =>
                         items.filter((_current, row) => row !== index),
@@ -1394,7 +1422,7 @@ export function JobRunner({
                   </button>
                   <button
                     type="button"
-                    className="text-left text-xs font-semibold text-violet-700 sm:col-span-4"
+                    className="text-left text-xs font-semibold text-accent sm:col-span-4"
                     onClick={() => {
                       setInvoiceSaveMessage("");
                       void saveInvoiceRecord("items", {
@@ -1432,7 +1460,7 @@ export function JobRunner({
             Notes
             <textarea
               maxLength={2000}
-              className="mt-2 block min-h-20 w-full rounded-xl border border-slate-300 bg-transparent p-3 font-normal dark:border-slate-600"
+              className="mt-2 block min-h-20 w-full rounded-xl border border-line-strong bg-transparent p-3 font-normal "
               value={invoiceDraft.notes}
               onChange={(event) =>
                 setInvoiceDraft((current) => ({
@@ -1442,15 +1470,15 @@ export function JobRunner({
               }
             />
           </label>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted">
             Free PDFs include “Made with RenderCart”. Pro and day-pass users
             receive an unbranded PDF. Tax and totals are calculated from the
             values you enter.
           </p>
-          <section className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+          <section className="space-y-3 rounded-xl border border-line p-4 ">
             <div>
               <h3 className="font-semibold">Recurring invoices · Pro</h3>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-muted">
                 Schedule this invoice to generate again. Each run gets a fresh
                 date and sequential number, then appears in your job history.
               </p>
@@ -1461,7 +1489,7 @@ export function JobRunner({
                   key={interval}
                   type="button"
                   disabled={invoiceDraft.document_type !== "invoice"}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-40 dark:border-slate-600"
+                  className="rounded-lg border border-line-strong px-3 py-2 text-sm font-semibold disabled:opacity-40 "
                   onClick={() => {
                     setInvoiceSaveMessage("");
                     void createRecurringSchedule(interval)
@@ -1484,7 +1512,7 @@ export function JobRunner({
             {recurringInvoices.map((schedule) => (
               <div
                 key={schedule.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-canvas p-3 text-sm "
               >
                 <span>
                   {schedule.interval} · {schedule.active ? "Active" : "Paused"}{" "}
@@ -1493,7 +1521,7 @@ export function JobRunner({
                 <div className="flex gap-3">
                   <button
                     type="button"
-                    className="font-semibold text-violet-700"
+                    className="font-semibold text-accent"
                     onClick={() =>
                       void changeRecurringSchedule(
                         schedule,
@@ -1530,10 +1558,7 @@ export function JobRunner({
             ))}
           </section>
           {invoiceSaveMessage && (
-            <p
-              aria-live="polite"
-              className="text-sm text-slate-600 dark:text-slate-300"
-            >
+            <p aria-live="polite" className="text-sm text-muted ">
               {invoiceSaveMessage}
             </p>
           )}
@@ -1560,7 +1585,7 @@ export function JobRunner({
                     key === "email" ? 320 : key === "website" ? 240 : 120
                   }
                   type={key === "email" ? "email" : "text"}
-                  className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                  className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                   value={businessCard[key]}
                   onChange={(event) =>
                     setBusinessCard((current) => ({
@@ -1575,7 +1600,7 @@ export function JobRunner({
               Accent color
               <input
                 type="color"
-                className="mt-2 block h-10 w-full rounded-xl border border-slate-300 bg-transparent p-1 dark:border-slate-600"
+                className="mt-2 block h-10 w-full rounded-xl border border-line-strong bg-transparent p-1 "
                 value={businessCard.accent_color}
                 onChange={(event) =>
                   setBusinessCard((current) => ({
@@ -1586,11 +1611,11 @@ export function JobRunner({
               />
             </label>
           </div>
-          <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <div className="rounded-xl border border-line p-4 ">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
               Preview
             </p>
-            <div className="mt-3 aspect-[7/4] max-w-md rounded-lg bg-white p-5 text-slate-900 shadow-sm ring-1 ring-slate-200">
+            <div className="mt-3 aspect-[7/4] max-w-md rounded-lg bg-surface p-5 text-ink shadow-sm ring-1 ring-slate-200">
               <div
                 className="h-full border-l-4 pl-4"
                 style={{ borderColor: businessCard.accent_color }}
@@ -1598,12 +1623,12 @@ export function JobRunner({
                 <p className="text-lg font-bold">
                   {businessCard.name || "Your name"}
                 </p>
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-muted">
                   {[businessCard.title, businessCard.company]
                     .filter(Boolean)
                     .join(" · ") || "Job title · Company"}
                 </p>
-                <div className="mt-5 space-y-1 text-xs text-slate-700">
+                <div className="mt-5 space-y-1 text-xs text-ink">
                   {[
                     businessCard.email,
                     businessCard.phone,
@@ -1617,7 +1642,7 @@ export function JobRunner({
               </div>
             </div>
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted">
             The PDF includes 0.125-inch bleed and trim marks around a 3.5 ×
             2-inch card. The file uses RGB colors; ask your printer whether they
             need a CMYK conversion. Free PDFs include “Made with RenderCart”.
@@ -1633,19 +1658,25 @@ export function JobRunner({
               onChange={(event) =>
                 setResumeTemplate(event.target.value as ResumeTemplate)
               }
-              className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+              className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
             >
-              <option value="classic">Classic — traditional blue headings</option>
-              <option value="modern">Modern — teal accent and larger name</option>
-              <option value="compact">Compact — tighter spacing for longer resumes</option>
+              <option value="classic">
+                Classic — traditional blue headings
+              </option>
+              <option value="modern">
+                Modern — teal accent and larger name
+              </option>
+              <option value="compact">
+                Compact — tighter spacing for longer resumes
+              </option>
             </select>
           </label>
-          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+          <label className="flex items-start gap-3 rounded-xl border border-line p-3 text-sm ">
             <input
               type="checkbox"
               checked={resumeRewriteWithAi}
               onChange={(event) => setResumeRewriteWithAi(event.target.checked)}
-              className="mt-0.5 accent-violet-600"
+              className="mt-0.5 accent-accent"
             />
             <span>
               Rewrite summary, experience, and cover letter with AI (Pro, 2
@@ -1670,7 +1701,7 @@ export function JobRunner({
                   required={required}
                   maxLength={key === "email" ? 320 : 240}
                   type={key === "email" ? "email" : "text"}
-                  className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                  className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                   value={resumeDraft[key]}
                   onChange={(event) =>
                     setResumeDraft((current) => ({
@@ -1714,7 +1745,7 @@ export function JobRunner({
                       : 6000
                 }
                 placeholder={placeholder}
-                className="mt-2 block min-h-24 w-full rounded-xl border border-slate-300 bg-transparent p-3 font-normal dark:border-slate-600"
+                className="mt-2 block min-h-24 w-full rounded-xl border border-line-strong bg-transparent p-3 font-normal "
                 value={resumeDraft[key]}
                 onChange={(event) =>
                   setResumeDraft((current) => ({
@@ -1725,29 +1756,29 @@ export function JobRunner({
               />
             </label>
           ))}
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted">
             Creates a clean, single-column PDF. Free output includes the
             RenderCart footer. Review all details before sharing your resume.
           </p>
         </div>
       )}
       {tool.slug === "video-merger" && (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-muted">
           Select 2–10 clips in the order you want them joined. Each clip must
           contain audio and video.
         </p>
       )}
       {tool.batchable && (
-        <label className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+        <label className="mt-4 flex items-start gap-3 rounded-xl border border-line p-3 text-sm ">
           <input
             type="checkbox"
             checked={batchMode}
             onChange={(event) => setBatchMode(event.target.checked)}
-            className="mt-0.5 accent-violet-600"
+            className="mt-0.5 accent-accent"
           />
           <span>
             <strong>Batch files (Pro)</strong>
-            <span className="mt-1 block text-xs text-slate-500">
+            <span className="mt-1 block text-xs text-muted">
               Each file gets its own result in a ZIP. For Merge PDF, select
               files in pairs; each pair becomes one merged PDF. Batch accepts up
               to {tool.batch_max_files ?? 20} files.
@@ -1781,7 +1812,7 @@ export function JobRunner({
             {property.title ?? key.replaceAll("_", " ")}
             {property.widget === "textarea" ? (
               <textarea
-                className="mt-2 block min-h-40 w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                className="mt-2 block min-h-40 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                 minLength={property.minLength}
                 maxLength={property.maxLength}
                 value={optionValues[key] ?? ""}
@@ -1794,7 +1825,7 @@ export function JobRunner({
               />
             ) : property.type === "boolean" ? (
               <input
-                className="mt-2 block accent-violet-600"
+                className="mt-2 block accent-accent"
                 type="checkbox"
                 checked={optionValues[key] === "true"}
                 onChange={(event) =>
@@ -1806,7 +1837,7 @@ export function JobRunner({
               />
             ) : property.enum ? (
               <select
-                className="mt-2 block rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-600"
+                className="mt-2 block rounded-xl border border-line-strong bg-transparent px-3 py-2 "
                 value={optionValues[key] ?? ""}
                 onChange={(event) =>
                   setOptionValues((current) => ({
@@ -1823,13 +1854,14 @@ export function JobRunner({
               </select>
             ) : (
               <input
-                className="mt-2 block w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 font-normal dark:border-slate-600"
+                className="mt-2 block w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 font-normal "
                 type={
                   property.format === "password"
                     ? "password"
                     : property.format === "uri"
                       ? "url"
-                      : property.type === "integer" || property.type === "number"
+                      : property.type === "integer" ||
+                          property.type === "number"
                         ? "number"
                         : "text"
                 }
@@ -1847,7 +1879,7 @@ export function JobRunner({
               />
             )}
             {property.description && (
-              <span className="mt-1 block text-xs font-normal text-slate-500">
+              <span className="mt-1 block text-xs font-normal text-muted">
                 {property.description}
               </span>
             )}
@@ -1860,11 +1892,11 @@ export function JobRunner({
         </p>
       )}
       {paywall && (
-        <div className="mt-4 rounded-2xl bg-violet-50 p-4 dark:bg-violet-950">
+        <div className="mt-4 rounded-2xl bg-accent-soft p-4 ">
           <p className="text-sm font-semibold">
             {batchMode ? "Batch processing requires Pro" : "Need this job now?"}
           </p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          <p className="mt-1 text-sm text-muted ">
             {batchMode
               ? "Switch to Pro to process multiple files in one job."
               : "Sign in and pay once to run this tool beyond the free limit."}
@@ -1881,15 +1913,19 @@ export function JobRunner({
                   uploadedIds.length > 0)
               }
               onClick={() => void purchaseSingleJob(paidProduct)}
-              className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
               Single job · {paidPrice}
             </button>
           </div>
           <Link
-            className="mt-3 inline-block text-sm font-semibold text-violet-700 dark:text-violet-300"
+            className="mt-3 inline-block text-sm font-semibold text-accent "
             href="/pricing"
-            onClick={() => trackRenderCartEvent("paywall-pricing-click", { tool: tool?.slug ?? "unknown" })}
+            onClick={() =>
+              trackRenderCartEvent("paywall-pricing-click", {
+                tool: tool?.slug ?? "unknown",
+              })
+            }
           >
             See plans and pricing →
           </Link>
@@ -1906,9 +1942,9 @@ export function JobRunner({
           (!!turnstileSiteKey && !turnstileToken)
         }
         onClick={() => void submit()}
-        className="mt-6 rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-6 rounded-xl bg-accent px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {busy ? "Uploading…" : "Run tool"}
+        {busy ? "Uploading…" : `Run ${tool.name}`}
       </button>
     </div>
   );

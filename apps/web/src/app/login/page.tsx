@@ -8,6 +8,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [magicBusy, setMagicBusy] = useState(false);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -23,9 +24,12 @@ export default function LoginPage() {
         ...(totpCode ? { totp_code: totpCode } : {}),
       });
       const requested = new URLSearchParams(window.location.search).get("next");
-      const destination = requested?.startsWith("/") && !requested.startsWith("//") && !requested.includes("\\")
-        ? requested
-        : "/account";
+      const destination =
+        requested?.startsWith("/") &&
+        !requested.startsWith("//") &&
+        !requested.includes("\\")
+          ? requested
+          : "/account";
       window.location.assign(destination);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not sign in.");
@@ -35,6 +39,8 @@ export default function LoginPage() {
   }
 
   async function magicLink(event: FormEvent<HTMLFormElement>) {
+    if (magicBusy) return;
+    setMagicBusy(true);
     event.preventDefault();
     setError("");
     setMessage("");
@@ -45,33 +51,118 @@ export default function LoginPage() {
       });
       setMessage(result.status);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not request a sign-in link.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not request a sign-in link.",
+      );
+    } finally {
+      setMagicBusy(false);
     }
   }
 
   return (
     <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-6 py-12">
-      <Link href="/" className="mb-8 text-xl font-bold">RenderCart<span className="text-violet-600">.</span></Link>
-      <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <section className="rounded-3xl border border-line bg-surface p-8 shadow-sm  ">
         <h1 className="text-2xl font-semibold">Welcome back</h1>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Sign in to continue to your tools.</p>
+        <p className="mt-2 text-sm text-muted ">
+          Sign in to continue to your tools.
+        </p>
         <form className="mt-7 space-y-4" onSubmit={login}>
-          <label className="block text-sm font-medium">Email<input name="email" type="email" autoComplete="email" required className="mt-1 w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2.5 dark:border-slate-600" /></label>
-          <label className="block text-sm font-medium">Password<input name="password" type="password" autoComplete="current-password" required className="mt-1 w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2.5 dark:border-slate-600" /></label>
-          <label className="block text-sm font-medium">Authenticator or recovery code <span className="font-normal text-slate-500">(if enabled)</span><input name="totp_code" inputMode="numeric" autoComplete="one-time-code" className="mt-1 w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2.5 dark:border-slate-600" /></label>
-          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-          {message && <p role="status" className="text-sm text-emerald-700">{message}</p>}
-          <button disabled={busy} className="w-full rounded-xl bg-violet-600 px-4 py-3 font-medium text-white disabled:opacity-60">{busy ? "Signing in…" : "Sign in"}</button>
+          <label className="block text-sm font-medium">
+            Email
+            <input
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2.5 "
+            />
+          </label>
+          <label className="block text-sm font-medium">
+            Password
+            <input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2.5 "
+            />
+          </label>
+          <details className="text-sm">
+            <summary className="text-muted">
+              Use a two-factor or recovery code
+            </summary>
+            <label className="mt-3 block text-sm font-medium">
+              Authenticator or recovery code
+              <input
+                name="totp_code"
+                inputMode="text"
+                autoComplete="one-time-code"
+                className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2.5 "
+              />
+            </label>
+          </details>
+          {error && (
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+          )}
+          {message && (
+            <p role="status" className="text-sm text-emerald-700">
+              {message}
+            </p>
+          )}
+          <button
+            disabled={busy}
+            className="w-full rounded-xl bg-accent px-4 py-3 font-medium text-white disabled:opacity-60"
+          >
+            {busy ? "Signing in…" : "Sign in"}
+          </button>
         </form>
-        <form className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700" onSubmit={magicLink}>
-          <label className="block text-sm font-medium">Or email me a sign-in link<input name="email" type="email" required autoComplete="email" className="mt-1 w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2.5 dark:border-slate-600" /></label>
-          <button className="mt-3 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium dark:border-slate-600">Email a sign-in link</button>
-        </form>
+        <details className="mt-6 border-t border-line pt-5 text-sm">
+          <summary className="font-medium">Prefer a sign-in link?</summary>
+          <form className="mt-4" onSubmit={magicLink}>
+            <label className="block text-sm font-medium">
+              Email address
+              <input
+                name="email"
+                type="email"
+                required
+                autoComplete="email"
+                className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2.5 "
+              />
+            </label>
+            <button
+              disabled={magicBusy}
+              className="mt-3 w-full rounded-xl border border-line-strong px-4 py-2.5 text-sm font-medium disabled:opacity-60"
+            >
+              {magicBusy ? "Sending…" : "Email a sign-in link"}
+            </button>
+          </form>
+        </details>
         <div className="mt-5 grid grid-cols-2 gap-3">
-          <a className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-sm dark:border-slate-600" href="/api/auth/oauth/google/start">Continue with Google</a>
-          <a className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-sm dark:border-slate-600" href="/api/auth/oauth/github/start">Continue with GitHub</a>
+          <a
+            className="rounded-xl border border-line-strong px-3 py-2.5 text-center text-sm "
+            href="/api/auth/oauth/google/start"
+          >
+            Continue with Google
+          </a>
+          <a
+            className="rounded-xl border border-line-strong px-3 py-2.5 text-center text-sm "
+            href="/api/auth/oauth/github/start"
+          >
+            Continue with GitHub
+          </a>
         </div>
-        <div className="mt-5 flex justify-between text-sm"><Link className="text-violet-700 dark:text-violet-300" href="/signup">Create an account</Link><Link className="text-violet-700 dark:text-violet-300" href="/password-reset">Forgot password?</Link></div>
+        <div className="mt-5 flex justify-between text-sm">
+          <Link className="text-accent " href="/signup">
+            Create an account
+          </Link>
+          <Link className="text-accent " href="/password-reset">
+            Forgot password?
+          </Link>
+        </div>
       </section>
     </main>
   );

@@ -4,6 +4,7 @@ Record every dependency and model used in RenderCart, its license, version, purp
 
 | Component | License | Use | Scope | Verification |
 |---|---|---|---|---|
+| `@eslint/eslintrc` 3.3.7 | MIT | Existing ESLint configuration’s FlatCompat import, now declared directly for strict pnpm resolution | Development only | 2026-10-21; installed package `package.json` and `LICENSE` |
 | FastAPI | MIT | API | Public | 2026-10-17; upstream metadata |
 | Pydantic | MIT | Settings and validation | Public | 2026-10-17; upstream metadata |
 | SQLAlchemy | MIT | Database access | Public | 2026-10-17; upstream metadata |

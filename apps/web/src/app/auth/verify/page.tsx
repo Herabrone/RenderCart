@@ -15,15 +15,29 @@ export default function VerifyEmailPage() {
     }
     authPost("verify-email", { token })
       .then(() => setStatus("Your email is verified. You can sign in now."))
-      .catch((cause: unknown) => setStatus(cause instanceof Error ? cause.message : "Could not verify your email."));
+      .catch((cause: unknown) =>
+        setStatus(
+          cause instanceof Error
+            ? cause.message
+            : "Could not verify your email.",
+        ),
+      );
   }, []);
 
-  return <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-6 py-12">
-    <Link href="/" className="mb-8 text-xl font-bold">RenderCart<span className="text-violet-600">.</span></Link>
-    <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-      <h1 className="text-2xl font-semibold">Email verification</h1>
-      <p role="status" className="mt-3 text-slate-600 dark:text-slate-300">{status}</p>
-      <Link className="mt-5 inline-block text-sm font-medium text-violet-700 dark:text-violet-300" href="/login">Continue to sign in</Link>
-    </section>
-  </main>;
+  return (
+    <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-6 py-12">
+      <section className="rounded-3xl border border-line bg-surface p-8 shadow-sm  ">
+        <h1 className="text-2xl font-semibold">Email verification</h1>
+        <p role="status" className="mt-3 text-muted ">
+          {status}
+        </p>
+        <Link
+          className="mt-5 inline-block text-sm font-medium text-accent "
+          href="/login"
+        >
+          Continue to sign in
+        </Link>
+      </section>
+    </main>
+  );
 }

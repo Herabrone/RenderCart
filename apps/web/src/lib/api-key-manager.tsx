@@ -96,18 +96,15 @@ export function ApiKeyManager() {
   }
 
   return (
-    <section className="mt-8 border-t border-slate-200 pt-6 dark:border-slate-700">
+    <section className="mt-8 border-t border-line pt-6 ">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Developer API keys</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          <p className="mt-1 text-sm text-muted ">
             Pro accounts can use the public tools API. Keys are shown only once.
           </p>
         </div>
-        <a
-          className="text-sm font-semibold text-violet-700 dark:text-violet-300"
-          href="/developers"
-        >
+        <a className="text-sm font-semibold text-accent " href="/developers">
           API documentation
         </a>
       </div>
@@ -119,21 +116,21 @@ export function ApiKeyManager() {
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="Key name, e.g. Production server"
-          className="min-w-56 flex-1 rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-600"
+          className="min-w-56 flex-1 rounded-xl border border-line-strong bg-transparent px-3 py-2 "
         />
-        <button className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white">
+        <button className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white">
           Create key
         </button>
       </form>
       {newKey && (
-        <div className="mt-4 rounded-xl border border-amber-400 bg-amber-50 p-4 dark:bg-amber-950">
+        <div className="mt-4 rounded-xl border border-amber-400 bg-amber-50 p-4 ">
           <p className="text-sm font-semibold">
             Copy this key now. It will not be shown again.
           </p>
           <code className="mt-2 block break-all text-sm">{newKey}</code>
           <button
             type="button"
-            className="mt-3 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold dark:border-slate-600"
+            className="mt-3 rounded-lg border border-line-strong px-3 py-1.5 text-xs font-semibold "
             onClick={() => void navigator.clipboard.writeText(newKey)}
           >
             Copy key
@@ -141,7 +138,7 @@ export function ApiKeyManager() {
         </div>
       )}
       {keys.length > 0 && (
-        <ul className="mt-4 divide-y divide-slate-200 dark:divide-slate-700">
+        <ul className="mt-4 divide-y divide-line ">
           {keys.map((key) => (
             <li
               key={key.id}
@@ -151,7 +148,7 @@ export function ApiKeyManager() {
                 <p className="text-sm font-semibold">
                   {key.name} · {key.prefix}…
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted">
                   {key.revoked_at ? "Revoked" : "Active"} · Created{" "}
                   {new Date(key.created_at).toLocaleDateString()}
                   {key.last_used_at
@@ -173,10 +170,7 @@ export function ApiKeyManager() {
         </ul>
       )}
       {message && (
-        <p
-          role="status"
-          className="mt-3 text-sm text-slate-600 dark:text-slate-300"
-        >
+        <p role="status" className="mt-3 text-sm text-muted ">
           {message}
         </p>
       )}
