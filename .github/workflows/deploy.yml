@@ -39,12 +39,12 @@ jobs:
         run: |
           set -eu
           ln -sfn "$RENDERCART_ENV_FILE" .env
-          docker compose -f infra/compose.yml config --quiet
-          docker compose -f infra/compose.yml build
-          docker compose -f infra/compose.yml run --rm api alembic upgrade head
+          docker compose --env-file "$RENDERCART_ENV_FILE" -f infra/compose.yml config --quiet
+          docker compose --env-file "$RENDERCART_ENV_FILE" -f infra/compose.yml build
+          docker compose --env-file "$RENDERCART_ENV_FILE" -f infra/compose.yml run --rm api alembic upgrade head
 
       - name: Start production stack
         run: |
           set -eu
-          docker compose -f infra/compose.yml up -d --remove-orphans
-          docker compose -f infra/compose.yml ps
+          docker compose --env-file "$RENDERCART_ENV_FILE" -f infra/compose.yml up -d --remove-orphans
+          docker compose --env-file "$RENDERCART_ENV_FILE" -f infra/compose.yml ps
