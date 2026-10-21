@@ -149,7 +149,10 @@ services:
     networks: [default, sandbox_internal]
     healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 10 }
   minio:
-    image: minio/minio:latest
+    # Upstream removed its community images from the public registries. This
+    # pinned, community-maintained fork keeps the MinIO-compatible API used by
+    # the app while avoiding an unavailable mutable upstream tag.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     command: ["server", "/data", "--console-address", ":9001"]
     restart: unless-stopped
     environment:
@@ -158,7 +161,7 @@ services:
     volumes: [minio_data:/data]
     networks: [default, sandbox_internal]
   minio-init:
-    image: minio/mc:latest
+    image: pgsty/mc:latest
     depends_on: [minio]
     entrypoint: ["/bin/sh", "-c"]
     command:
