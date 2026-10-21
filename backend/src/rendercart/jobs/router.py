@@ -258,7 +258,13 @@ def create_job(
         raise HTTPException(
             status_code=422, detail=f"At least {tool.inputs.min_files} files are required"
         )
-    uploads = list(db.scalars(select(Upload).where(Upload.id.in_(body.upload_ids))))
+    uploads_by_id = {
+        upload.id: upload
+        for upload in db.scalars(select(Upload).where(Upload.id.in_(body.upload_ids)))
+    }
+    uploads = [
+        uploads_by_id[upload_id] for upload_id in body.upload_ids if upload_id in uploads_by_id
+    ]
     if len(uploads) != len(set(body.upload_ids)):
         raise HTTPException(status_code=400, detail="One or more uploads are invalid")
     if any(
@@ -460,11 +466,11 @@ def create_job(
             input_upload_ids=[str(item.id) for item in uploads],
             quota_reserved=quota_key is not None,
             quota_key=quota_key,
-            expires_at=now + (timedelta(hours=1) if paid_tier else timedelta(days=1)),
+            expires_at=now + (timedelta(hours=24) if paid_tier else timedelta(days=1)),
         )
         if paid_tier:
             for upload in uploads:
-                upload.expires_at = min(upload.expires_at, now + timedelta(hours=1))
+                upload.expires_at = max(upload.expires_at, now + timedelta(hours=24))
         db.add(job)
         db.commit()
     except Exception:
@@ -494,6 +500,14 @@ def create_job(
     except Exception as exc:
         if cost and user:
             account = db.get(CreditAccount, user.id, with_for_update=True)
+            reservations = list(
+                db.scalars(select(CreditReservation).where(CreditReservation.job_id == job_id))
+            )
+            for reservation in reservations:
+                held_lot = db.get(CreditLot, reservation.credit_lot_id, with_for_update=True)
+                if held_lot:
+                    held_lot.held = max(0, held_lot.held - reservation.amount)
+                db.delete(reservation)
             if account:
                 account.held = max(0, account.held - cost)
                 db.add(CreditLedger(user_id=user.id, job_id=job_id, amount=0, kind="release"))

@@ -357,11 +357,17 @@ def execute_tool(self: object, job_id: str) -> None:
         job.progress = 5
         db.commit()
         _publish(job.id, job.state, job.progress)
-        uploads = list(
-            db.scalars(
+        uploads_by_id = {
+            upload.id: upload
+            for upload in db.scalars(
                 select(Upload).where(Upload.id.in_([UUID(value) for value in job.input_upload_ids]))
             )
-        )
+        }
+        uploads = [
+            uploads_by_id[UUID(value)]
+            for value in job.input_upload_ids
+            if UUID(value) in uploads_by_id
+        ]
         if len(uploads) != len(job.input_upload_ids):
             _fail_job(db, job, "upload_missing")
             return
@@ -684,7 +690,18 @@ def _finish_job(
     job.state = JobState.SUCCEEDED
     job.progress = 100
     job.finished_at = datetime.now(UTC)
-    retention_minutes = 60 if job.guest_id else 120
+    if job.guest_id:
+        retention_minutes = get_settings().retention_guest_min
+    elif job.user_id:
+        user = db.get(User, job.user_id)
+        level = user_level(db, user) if user else Level.FREE
+        retention_minutes = (
+            get_settings().retention_pro_min
+            if level >= Level.DAY_PASS
+            else get_settings().retention_free_min
+        )
+    else:
+        retention_minutes = get_settings().retention_guest_min
     job.expires_at = datetime.now(UTC).replace(microsecond=0) + timedelta(minutes=retention_minutes)
     if audit_event:
         db.add(
@@ -718,7 +735,18 @@ def _fail_job(db: Session, job: Job, error_code: str) -> None:
     job.state = JobState.FAILED
     job.error_code = error_code
     job.finished_at = datetime.now(UTC)
-    retention_minutes = 60 if job.guest_id else 120
+    if job.guest_id:
+        retention_minutes = get_settings().retention_guest_min
+    elif job.user_id:
+        user = db.get(User, job.user_id)
+        level = user_level(db, user) if user else Level.FREE
+        retention_minutes = (
+            get_settings().retention_pro_min
+            if level >= Level.DAY_PASS
+            else get_settings().retention_free_min
+        )
+    else:
+        retention_minutes = get_settings().retention_guest_min
     job.expires_at = datetime.now(UTC).replace(microsecond=0) + timedelta(minutes=retention_minutes)
     db.commit()
     if word_quota_key and word_quota_reserved_words:
@@ -795,15 +823,31 @@ def cleanup_expired() -> int:
             for purchase in purchases:
                 if purchase.status == "pending":
                     purchase.status = "expired"
-        stale_before = now - timedelta(minutes=30)
-        stale_jobs = list(
+        active_jobs = list(
             db.scalars(
-                select(Job).where(
-                    Job.state.in_([JobState.QUEUED, JobState.RUNNING]),
-                    Job.created_at <= stale_before,
-                )
+                select(Job)
+                .where(Job.state.in_([JobState.QUEUED, JobState.RUNNING]))
+                .with_for_update(skip_locked=True)
             )
         )
+        stale_jobs = []
+        for candidate in active_jobs:
+            manifest = registry.get(candidate.tool_slug)
+            if manifest is None:
+                stale_jobs.append(candidate)
+                continue
+            timeout_seconds = execution_timeout(
+                manifest,
+                len(candidate.input_upload_ids),
+                batch_mode=bool(candidate.options.get("batch_mode")),
+            )
+            reference_time = (
+                candidate.started_at
+                if candidate.state == JobState.RUNNING
+                else candidate.created_at
+            )
+            if reference_time and reference_time + timedelta(seconds=timeout_seconds + 60) <= now:
+                stale_jobs.append(candidate)
         for job in stale_jobs:
             if job.tool_slug == "chat-with-pdf":
                 try:

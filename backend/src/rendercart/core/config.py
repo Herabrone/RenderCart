@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     twilio_auth_token: SecretStr | None = None
     twilio_from_number: str | None = None
     monitor_sms_monthly_cap: int = 20
+    retention_guest_min: int = 60
+    retention_free_min: int = 120
+    retention_pro_min: int = 1440
 
     @model_validator(mode="after")
     def require_production_secrets(self) -> "Settings":
@@ -122,10 +125,12 @@ class Settings(BaseSettings):
             proxy_url = urlsplit(self.s3_proxy_site)
             if s3_url.scheme != "https" or s3_url.hostname in {"localhost", "127.0.0.1"}:
                 raise ValueError("S3_PUBLIC_ENDPOINT must be reachable by production users")
-            if proxy_url.scheme != "https" or self.s3_public_endpoint.rstrip(
-                "/"
-            ) != self.s3_proxy_site.rstrip("/"):
-                raise ValueError("S3_PUBLIC_ENDPOINT must match the HTTPS S3_PROXY_SITE")
+            if proxy_url.scheme != "http" or (
+                proxy_url.hostname != s3_url.hostname or proxy_url.port not in {None, 80}
+            ):
+                raise ValueError(
+                    "S3_PROXY_SITE must use the public S3 host and local HTTP listener"
+                )
         return self
 
 

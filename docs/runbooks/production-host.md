@@ -54,7 +54,9 @@ the host and is reached only through the tunnel.
 4. For this deployment, use `rendercart.app` as the public app hostname. Set
    `APP_BASE_URL=https://rendercart.app`, `CADDY_SITE_ADDRESS=:80`,
    `S3_PUBLIC_ENDPOINT=https://storage.rendercart.app`, and
-   `S3_PROXY_SITE=http://storage.rendercart.app`. Set
+   `S3_PROXY_SITE=http://storage.rendercart.app`. `S3_PROXY_SITE` is Caddy's
+   local HTTP site address behind Cloudflare Tunnel; it must use the same host
+   as the public HTTPS endpoint. Set
    `UMAMI_BASE_URL=https://stats.rendercart.app` and
    `UMAMI_CADDY_SITE=http://stats.rendercart.app` when analytics is enabled.
    Configure Cloudflare Tunnel to route `rendercart.app`,
