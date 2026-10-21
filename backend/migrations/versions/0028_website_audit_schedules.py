@@ -22,8 +22,12 @@ def upgrade() -> None:
         sa.Column("next_run_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_job_id", sa.Uuid(), nullable=True),
         sa.Column("last_error_code", sa.String(40), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["last_job_id"], ["jobs.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),

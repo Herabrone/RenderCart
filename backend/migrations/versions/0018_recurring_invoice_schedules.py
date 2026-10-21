@@ -22,15 +22,25 @@ def upgrade() -> None:
         sa.Column("active", sa.Boolean(), nullable=False),
         sa.Column("next_run_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_job_id", sa.Uuid(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["last_job_id"], ["jobs.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_recurring_invoice_schedules_user_id", "recurring_invoice_schedules", ["user_id"])
-    op.create_index("ix_recurring_invoice_schedules_next_run_at", "recurring_invoice_schedules", ["next_run_at"])
-    op.create_index("ix_recurring_invoice_due", "recurring_invoice_schedules", ["active", "next_run_at"])
+    op.create_index(
+        "ix_recurring_invoice_schedules_user_id", "recurring_invoice_schedules", ["user_id"]
+    )
+    op.create_index(
+        "ix_recurring_invoice_schedules_next_run_at", "recurring_invoice_schedules", ["next_run_at"]
+    )
+    op.create_index(
+        "ix_recurring_invoice_due", "recurring_invoice_schedules", ["active", "next_run_at"]
+    )
 
 
 def downgrade() -> None:
