@@ -1,0 +1,12 @@
+{
+  "name": "rendercart",
+  "private": true,
+  "packageManager": "pnpm@9.12.1",
+  "scripts": {
+    "lint": "pnpm --filter @rendercart/web lint",
+    "typecheck": "pnpm --filter @rendercart/web typecheck",
+    "test": "pnpm --filter @rendercart/web test",
+    "build": "pnpm --filter @rendercart/web build",
+    "format": "pnpm --filter @rendercart/web format"
+  }
+}

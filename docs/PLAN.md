@@ -4,13 +4,14 @@
 >
 > - **Owner / sole super admin:** Darian Lagman (git user `Darian Lagman`)
 > - **Plan written:** 2026-10-17
-> - **Status:** Planning complete. No application code exists yet. Next step is **Phase 0**.
+> - **Status:** Implementation in progress. Check [§20 Status tracker](#20-status-tracker) for the current phase details.
 > - **Keep this file current:** tick boxes in [§20 Status tracker](#20-status-tracker) as work lands, and record any decision that changes this plan in `docs/adr/` (see [§19](#19-how-to-work-in-this-repo-rules-for-agents)).
 
 ---
 
 ## Table of contents
 
+0. [Agent pickup notes](#0-agent-pickup-notes)
 1. [Background & history](#1-background--history)
 2. [Product vision](#2-product-vision)
 3. [Locked decisions (do not re-litigate)](#3-locked-decisions-do-not-re-litigate)
@@ -33,6 +34,44 @@
 20. [Status tracker](#20-status-tracker)
 21. [Open questions for the owner](#21-open-questions-for-the-owner)
 22. [Glossary](#22-glossary)
+
+---
+
+## 0. Agent pickup notes
+
+**Handoff checkpoint: 2026-10-18.** This document is the complete product and engineering plan for RenderCart. Read it together with the repository before changing code; the current implementation is already well beyond a blank Phase 0 scaffold. Sections 1–18 describe the intended product, fixed decisions, system design, tool catalog, and acceptance criteria. Section 20 describes what the current code does and what remains. Keep that tracker accurate as work lands.
+
+### Objective
+
+Complete the RenderCart pivot into a freemium utility-tools website described here, through production launch and owner sign-off. Build in the listed phase order where dependencies require it. Do not treat the presence of partial implementations as phase completion: each phase is complete only when its acceptance criteria and any outstanding runtime or owner checks are satisfied.
+
+### State to preserve
+
+- The prior Shopify/image-rendering application was removed in commit `527fa5e`; do not restore it. The older commit `4f1229f` is available only as reference for the safe URL fetcher and a few infrastructure patterns (see §1).
+- The repository is on branch `Feature-5`. At this checkpoint the worktree contains the new implementation and documentation as local changes/untracked files. Inspect `git status` before editing, preserve all existing work, and do not clean or reset the worktree. The owner has not asked for a commit or push; follow the rule in §19.
+- The detailed phase tracker in §20 is authoritative for implementation progress. Phases 0–9 have substantial partial implementations; Phase 10 and production launch are not complete. Do not mark an entire phase done just because its first implementation exists.
+- Existing defaults, security boundaries, tool scope, and pricing are captured in §§3–6. They are decisions, not questions to reopen. Change them only with owner approval and an ADR.
+
+### Immediate checkpoint — completed 2026-10-18
+
+The single-job price override path is wired end to end. Admin can edit a public tool's price in integer cents; the API returns the configured price and the tool's tier/default price; the public tool page and job runner display that price; and the job-specific checkout uses Stripe `price_data` when an override exists. The same cents value is stored on the `Purchase`, and webhook fulfillment validates Stripe's subtotal against that stored amount. A malformed configured override fails closed with a service error. Generic plan/day-pass/credit checkout continues to use configured Stripe Price IDs. Static checks passed after the changes: Ruff, mypy, the web TypeScript check, ESLint, and `git diff --check`. No Stripe test-mode checkout was performed, so live Stripe behavior remains a Phase 2 acceptance item.
+
+The Vault includes owner-only short links, expiring text shares, and temporary file shares. Each is a `restricted=True`, `hidden=True`, super-admin-only `Category.VAULT` registry module; generic tool/job/API paths keep them hidden. The `/vault` page checks the API session server-side before rendering and is marked noindex; management routes return 404 unless the authenticated, unbanned user is the super admin and has completed MFA. Destinations, paste text, file names, object keys, and file bytes are AES-GCM encrypted before they are stored in the database or private MinIO `vault` bucket. File uploads stream through the owner-only API with a 25 MB limit; public links serve bytes only as `application/octet-stream` attachments with `nosniff`, `no-store`, and noindex headers. Share codes are random, public handlers are rate-limited, expired records and file objects are removed by a five-minute Celery task, and create/delete operations are audited. `/v/{code}`, `/p/{code}`, and `/f/{code}` are proxied directly to FastAPI. Seven focused Vault tests pass, covering non-owner 404s, MFA, encrypted storage, safe attachment delivery, cleanup, and public registry/OpenAPI exclusion. The MFA-gated admin dashboard also reports live GPU Celery worker presence, queue backlog by GPU queue, and optional private DCGM hardware readings. The Next.js production build now runs a bundle-isolation gate that confirms the Vault manager lives only in the Vault route chunk and scans every other JS chunk for Vault-only UI strings and API paths; the check passed across 19 route manifests. Full route, sitemap, search, analytics, and live response isolation verification remains part of Phase 9 acceptance.
+
+Next, inspect the remaining Phase 9 backlog and continue the unfinished work listed in §20. Recheck current code before assuming any tracker item is still open or complete.
+
+After that checkpoint, continue with the remaining items in §20 and the phase acceptance criteria in §18. In particular, the current plan calls out these substantial remaining areas: finish the Vault and its isolation guarantees; implement the remaining Phase 8 website/developer tools; add outstanding image and resume capabilities; complete remaining client-side tools and launch content; and satisfy runtime, security, billing, backup, monitoring, and deployment acceptance criteria. The phase sections and §6 catalog define the required scope; this summary does not replace them.
+
+### External prerequisites and limits
+
+Development can continue using the defaults in §21, but final acceptance depends on owner or infrastructure inputs for production: actual GPU capacity and private networking; a production domain and VPS; transactional email and legal-entity details; Stripe live-mode configuration; a commercial Google Web Risk key and trusted edge country header for dynamic QR; and gated model access/`DIARIZATION_HF_TOKEN` if speaker diarization is enabled. Until those are supplied, document the exact blocked acceptance item and keep the corresponding feature disabled where the plan requires it. Do not put secrets in the repository.
+
+### Security rules that apply to every phase
+
+- The owner is the sole super admin. No web endpoint or UI may grant or remove `super_admin`; bootstrap and recovery are server-side operations only.
+- Risky tools stay super-admin-only, hidden, and 404 to everyone else. Enforce this in the registry and every API/UI/search/SEO/OpenAPI/API-key surface, and audit each Vault action. Never expose a risky tool because it is convenient for development.
+- Validate access, quotas, credit reservations, file ownership, and billing on the server. A frontend restriction is never the security boundary.
+- Check licenses for dependencies and model weights before public use and record them in `docs/licenses.md`; follow the AGPL/non-commercial defaults in §6 and Q5.
 
 ---
 
@@ -175,7 +214,7 @@ Tools that could create legal liability for the owner. **Super-admin only, invis
 
 **Default rule for new tools:** if a tool could plausibly expose the owner to copyright, ToS, abuse-hosting, or impersonation liability, mark it `restricted=True` and ask the owner before making it public.
 
-Additional tools that are **public but must be gated against abuse**: Dynamic QR codes (they are URL redirects) — require a logged-in account, check targets against Google Safe Browsing / URLhaus, provide an abuse-report link on the interstitial, and allow admins to disable codes.
+Additional tools that are **public but must be gated against abuse**: Dynamic QR codes (they are URL redirects) — require a logged-in account, validate public HTTP(S) targets and check them through commercial Google Web Risk (not non-commercial Safe Browsing v4), provide an abuse-report link on the interstitial, and allow admins to disable codes. See [ADR 0006](adr/0006-commercial-url-safety.md).
 
 ## 6. Tool catalog
 
@@ -194,7 +233,7 @@ Legend — **Runtime:** `client` (runs in browser, zero server cost), `cpu` (CPU
 | PDF → Word | 1 / 2 per day | Unlimited | 1 per 10 pages | M | cpu | ⚠️ `pdf2docx` depends on PyMuPDF (AGPL). Evaluate alternatives or LibreOffice import; decide in Phase 3 ADR |
 | PDF → Excel | 1 / 2 per day | Unlimited | 1 per 10 pages | M | cpu | `pdfplumber` (MIT) table extraction → `openpyxl` |
 | PDF → JPG/PNG | 2 / 3 per day | Unlimited, high DPI | 0 | S | cpu | `pypdfium2` |
-| Word/Excel/PPT/JPG → PDF | 2 / 3 per day | Unlimited | 0 | S | cpu (sandbox) | LibreOffice headless in sandboxed worker; images via `img2pdf` |
+| Word/Excel/PPT → PDF | 2 / 3 per day | Unlimited | 0 | S | cpu (sandbox) | DOCX/XLSX/PPTX via LibreOffice in the network-isolated sandbox worker; JPG/PNG via the separate Pillow-backed Images to PDF tool |
 | OCR (scan → searchable PDF / text) | 1 page / 3 pages per day | Unlimited | 1 per 10 pages | M | cpu or gpu | `OCRmyPDF` (MPL-2.0) + Tesseract (Apache-2.0); GPU option docTR/PaddleOCR (Apache-2.0) |
 | Edit PDF (text, images, annotations, fill forms) | Output watermarked | Clean output | 0 | S | client + cpu | Editing in browser with pdf.js (Apache-2.0) + `pdf-lib` (MIT); server flattens/finalizes |
 | E-sign | 1 / month | Unlimited + audit trail (signer email, IP, timestamp, document hash) | 0 | M | client + cpu | Visual signature via pdf-lib; cryptographic signature via `pyHanko` (MIT) |
@@ -217,36 +256,36 @@ Legend — **Runtime:** `client` (runs in browser, zero server cost), `cpu` (CPU
 
 | Tool | Guest / Free | Pro | Credits | Job tier | Runtime | Implementation notes |
 |---|---|---|---|---|---|---|
-| Transcription (audio/video → text, timestamps, speakers) | 3 min / 10 min per month | Hours (credit-metered) | 1 per minute | M (≤60 min) / L (≤180 min) | gpu | `faster-whisper` (MIT) large-v3; diarization via pyannote (MIT, gated HF model — accept terms) |
+| Transcription (audio/video → text, timestamps, speakers) | 3 min / 10 min per month | Hours (credit-metered) | 1 per minute | M (≤60 min) / L (≤180 min) | gpu | `faster-whisper` (MIT) large-v3; optional diarization via pyannote.audio (MIT code) and gated Community-1 model (CC-BY-4.0; owner must accept model conditions and configure HF token) |
 | Subtitle / SRT / VTT generator | Branded burn-in only | Clean SRT/VTT/burn-in, styling | 1 per minute | M | gpu + cpu | Whisper → SRT; burn-in with ffmpeg |
 | Subtitle translation | — | ✅ | +1 per minute | M | llm | AI gateway, segment-wise translation preserving timings |
-| Vocal remover / stem splitter | 1 / 1 song per day, MP3 out | Unlimited, WAV, 4-stem | 5 per song | S | gpu | Demucs (MIT) |
+| Vocal remover / stem splitter | 1 / 1 song per day, MP3 out | Unlimited, WAV, 4-stem | 5 per song | S | gpu | Demucs code is MIT, but upstream does not clearly establish commercial terms for the released checkpoints; do not ship those weights until licensing is resolved |
 | Video compressor | ≤100 MB | ≤2 GB, priority | 1 per 100 MB | S/M | cpu or gpu | ffmpeg (use LGPL build or invoke as separate binary; NVENC on GPU host) |
 | Video converter / trimmer / merger / to-GIF | ≤100 MB | ≤2 GB | 0 (fair use) | S | cpu | ffmpeg; trim UI in browser |
 | Audio converter / trimmer / ringtone maker | Free ≤50 MB | ≤1 GB, batch | 0 | — | cpu (or client via ffmpeg.wasm) | ffmpeg |
 | Audio extractor (video → MP3/WAV) | ≤100 MB | ≤2 GB | 0 | S | cpu | ffmpeg |
 | Text to speech | 500 chars, basic voice | 100K chars/job, premium voices, MP3/WAV | 1 per 1K chars | S/M | gpu | Kokoro (Apache-2.0) recommended. ⚠️ XTTS-v2 (Coqui CPML) is non-commercial; check Piper's current license |
-| Noise removal / audio enhance | 1 / 1 per day | Unlimited | 2 per 10 min | S | gpu | e.g. DeepFilterNet (MIT/Apache) |
+| Noise removal / audio enhance | 1 / 1 per day | Unlimited | 2 per 10 min | S | cpu sandbox | FFmpeg `afftdn` spectral denoiser; no model weights. DeepFilterNet checkpoint rights are unclear, so do not ship its weights until resolved |
 
 ### 6.4 Category D — AI Writing & Summaries
 
 | Tool | Guest / Free | Pro | Credits | Job tier | Runtime | Implementation notes |
 |---|---|---|---|---|---|---|
-| Summarizer (text / PDF / URL / transcript) | 1 / 3 per day, ≤5K words | Unlimited length (chunked map-reduce) | 2 per doc (+1 per 10K words) | S | llm | URL fetch via safe fetcher + `trafilatura` (Apache-2.0) |
-| Chat with PDF / document | 1 doc, 10 questions / day | Unlimited docs, history | 5 per doc indexed + 1 per question | M | llm + gpu | Chunk → embed (`bge-m3`, MIT, on GPU) → `pgvector` → LLM answer with page citations |
-| Paraphraser / rewriter (tones) | 500 words / day | 10K words per run | 1 per 1K words | S | llm | — |
-| Grammar & spelling fixer | 500 words / day | 10K words per run | 1 per 1K words | S | llm | Optionally LanguageTool server (LGPL) for deterministic checks |
-| Document translator (keeps formatting) | 1 page | Full docs (DOCX/PDF/PPTX/TXT) | 2 per page | M/L | llm + cpu | DOCX: translate runs via `python-docx`; PDF: convert → translate → rebuild |
-| AI writing helpers (email writer, title/caption generator, etc.) | 3 / day | Unlimited (fair use) | 1 per run | — | llm | Prompt templates; add incrementally |
+| Summarizer (text / PDF / URL / transcript) | 1 / 3 per day, ≤5K words | Chunked map-reduce, hard cap 2M extracted chars | 2 per doc (+1 per 10K words) | S | llm | URL fetch via safe fetcher + Trafilatura 2.3.1 (Apache-2.0); 2M-character operational ceiling bounds source extraction and model spend |
+| Chat with PDF / document | 1 indexing job / day (100-page cap), 10 questions / day | Unlimited retained documents and history | 5 per doc indexed + 1 per question | M | llm + gpu | Implemented: page-aware chunk → embed (`bge-m3`, MIT, 1024-dim GPU endpoint) → `pgvector` cosine retrieval → LLM answer with page/excerpt citations; see [ADR 0005](adr/0005-chat-with-pdf.md) |
+| Paraphraser / rewriter (tones) | 500 words / day | 10K words per run | 1 per 1K words | S | llm | Implemented for pasted text or TXT uploads with clear, professional, friendly, concise, and formal tones; daily words are reserved atomically after extraction |
+| Grammar & spelling fixer | 500 words / day | 10K words per run | 1 per 1K words | S | llm | Implemented for pasted text or TXT uploads, preserves paragraph structure and optionally the author's tone; LanguageTool remains a possible deterministic add-on |
+| Document translator (keeps formatting) | 1 page | Full docs (DOCX/PDF/PPTX/TXT) | 2 per page | M/L | llm + cpu | Implemented: DOCX paragraph/table/header/footer text via `python-docx`, PPTX slide text frames/tables via `python-pptx`, PDF text extraction/rebuild at original page dimensions, and UTF-8 TXT; free jobs are capped at one page/slide (500-word estimate for DOCX/TXT), paid document jobs are capped at 2,000 pages; PDF rebuild currently preserves page size and text flow but not original images/typography, so visual fidelity remains a follow-up |
+| AI writing helpers (email writer, title/caption generator, etc.) | 3 / day | Unlimited (fair use) | 1 per run | — | llm | Implemented prompt templates for email, title, caption, product description, social post, and agenda; optional TXT reference upload |
 
 ### 6.5 Category E — Business Generators
 
 | Tool | Guest / Free | Pro | Credits | Job tier | Runtime | Implementation notes |
 |---|---|---|---|---|---|---|
-| Invoice / receipt / quote generator | Branded "Made with RenderCart" footer | Own logo, saved clients/items, recurring invoices, numbering, multi-currency | 0 | S | cpu | HTML templates → PDF via WeasyPrint (BSD) or headless Chromium; data saved in Postgres |
-| Resume / CV builder + cover letter | 1 template, branded | All templates, AI rewrite, multiple resumes | 2 per AI rewrite | M | cpu + llm | Structured JSON resume → templates → PDF/DOCX |
+| Invoice / receipt / quote generator | Branded "Made with RenderCart" footer | Own logo, saved clients/items, recurring invoices, numbering, multi-currency | 0 | S | cpu | Implemented initial queued PDF generator via ReportLab with invoice/quote/receipt types, line items, tax, due dates, and CAD/USD/EUR/GBP/AUD/NZD/JPY/CHF/INR; the user's draft is encrypted in job options and free output is branded. Saved client/item records, recurring scheduling, and sequential server-side numbering remain |
+| Resume / CV builder + cover letter | Classic template, branded | Classic, modern, and compact templates; optional fact-preserving AI rewrite (2 credits), branded output off | 2 per AI rewrite | M | cpu + llm | Structured JSON resume → templates → PDF |
 | QR code generator (static) | Free (traffic magnet) | Free | 0 | — | client | `qrcode`/`segno` equivalent in JS; logos, colors, SVG/PNG |
-| **Dynamic QR codes** (editable target + scan analytics) | — (account required, 1 code) | Unlimited codes, analytics (time, country, device), logo, custom domain later | 0 | — | cpu | Redirect endpoint `/q/{code}` logs scan → 302. Geo via MaxMind GeoLite2 (license/attribution). **Abuse gating required** ([§5.3](#53-the-vault-restricted-tools)) |
+| **Dynamic QR codes** (editable target + scan analytics) | — (account required, 1 code) | Unlimited codes, analytics (time, country, device), logo, custom domain later | 0 | — | cpu | `/q/{code}` logs a scan then returns a 302 to a warning page with continue/report links; destinations are checked through commercial Google Web Risk Lookup before save and scan; country comes from trusted edge metadata when configured, otherwise `ZZ`; see [ADR 0006](adr/0006-commercial-url-safety.md). **Abuse gating required** ([§5.3](#53-the-vault-restricted-tools)) |
 | Barcode generator | Free | Free | 0 | — | client | JsBarcode / bwip-js |
 | Email signature generator | Basic templates | Premium templates, no branding | 0 | — | client | HTML output + copy-to-clipboard |
 | Business card generator | Branded | Print-ready PDF (bleed, CMYK note) | 0 | S | cpu | HTML → PDF |
@@ -255,11 +294,11 @@ Legend — **Runtime:** `client` (runs in browser, zero server cost), `cpu` (CPU
 
 | Tool | Guest / Free | Pro | Credits | Job tier | Runtime | Implementation notes |
 |---|---|---|---|---|---|---|
-| Uptime monitor | 1 site, 15-min checks, email alerts (account required) | 20 sites, 1-min checks, email + Discord/Slack webhook + SMS (capped) | 0 (SMS: 1 credit each) | — | cpu (scheduler) | Celery beat schedules checks; results in `monitor_checks`; status page per user later. SMS via Twilio (see Q10) |
-| SSL certificate & domain expiry alerts | 1 domain | Unlimited | 0 | — | cpu | TLS handshake cert inspection; domain expiry via RDAP |
-| Website speed / SEO audit | 1 report / day | Scheduled weekly reports, history, PDF export | 2 per report | S | cpu (sandbox) | Lighthouse CLI (Apache-2.0) in sandboxed headless Chromium; SSRF-safe target validation |
-| Public developer API (all public tools) | — | Included for Pro; per-call credit billing | per tool | — | api | API keys, rate limits, OpenAPI docs at `/developers` (Phase 8) |
-| Webhook tester / request bin | 1 bin, 1 h | 10 bins, 7 days | 0 | — | cpu | ⚠️ Consider abuse; requires account |
+| Uptime monitor | 1 site, 15-min checks, email alerts (account required) | 20 sites, 1-min checks, email + Discord/Slack webhook + SMS (capped) | 0 (SMS: 1 credit each) | — | cpu (scheduler) | Account-owned CRUD, pause/resume, check-now, 30-check history, Celery beat scheduling, 15-minute free / 1-minute paid checks, safe DNS-pinned HTTP fetching, and email/Discord/Slack outage + recovery alerts after two consecutive failures. Webhook URLs and opted-in SMS numbers are encrypted at rest; SMS is Pro-only, capped at 20 accepted messages/account/month by default, and spends 1 credit per accepted Twilio message. Public status pages and live provider/scheduler verification remain |
+| SSL certificate & domain expiry alerts | 1 domain | Unlimited | 0 | — | cpu | Implemented daily TLS certificate inspection and RDAP registration-expiry lookup with SSRF-safe DNS-pinned connections. Email alerts are sent once per certificate/registration expiry when within 30 days; renewed expiry dates can alert again. |
+| Website speed / SEO audit | 1 report / day | Scheduled weekly reports, history, PDF export | 2 per report | S | cpu (sandbox) | Manifest-driven Lighthouse CLI 13.5.0 audit for performance, accessibility, best practices, and SEO; requires verified-email Pro accounts for up to five schedules to public HTTPS URLs on port 443, validates the target, and routes browser CONNECT traffic through a public-IP-only DNS-pinning egress proxy from the otherwise internal-only sandbox network. Each weekly run reserves two credits and dispatches through the transactional job outbox. Reports include a downloadable PDF and Pro accounts retain the latest 50 encrypted-target summaries; runtime/scheduler verification remains |
+| Public developer API (all public tools) | — | Included for Pro; per-call credit billing | per tool | — | api | Implemented initial `/v1` catalog, signed upload, job create/status endpoints; owner-managed hashed API keys, 120 requests/minute/key, and a public-only `/v1/openapi.json`; account UI and `/developers` docs |
+| Webhook tester / request bin | 1 bin, 1 h | 10 bins, 7 days | 0 | — | cpu | Implemented with one-time 256-bit endpoint tokens (only SHA-256 hashes stored), encrypted payload/header/query captures, 64 KB body and 120 requests/hour limits, 100-event cap, CSRF-protected owner management, and expiry cleanup every five minutes. Sensitive authorization/cookie/token headers are omitted. Account UI |
 
 ### 6.7 Free client-side tools (traffic magnets, zero server cost)
 
@@ -271,9 +310,11 @@ Run 100% in the browser; each gets its own SEO landing page. Build these early �
 - **Image (canvas/WASM):** crop, resize, rotate, color picker & palette extractor, favicon generator, EXIF viewer/remover, meme maker.
 - **Generators:** static QR, barcode, email signature.
 
+Implemented client-side tools now include word counter, JSON formatter, Base64, password generator, static/dynamic QR, barcode, email signature, case converter, text compare, Lorem Ipsum, slug generator, line sorter/deduplicator, URL encoder/decoder, JWT viewer (no signature verification), MD5/SHA-1/SHA-256, UUID, timestamp, HEX/RGB/HSL color converter, percentage, tip, loan, and mortgage calculators, date difference/countdown, metric/imperial length conversion, currency conversion, Markdown/HTML conversion, JSON/CSV/YAML conversion, regex tester, cron validator/explainer, age/GPA/calorie calculators, military-time and time-zone converters, and seven image tools: crop, resize, rotate, palette extraction, favicon creation, JPEG EXIF viewing/removal by re-encoding, and meme captions. There are 44 client-side tool pages in total. Currency conversion uses daily-cached ECB euro reference rates, converts any supported pair through the EUR base, and keeps the last-good server cache for up to seven days when the upstream feed is unavailable; rates are informational, not intended for transaction pricing. Still open from this catalog: additional image format/EXIF coverage and remaining generators or launch content.
+
 ### 6.8 Tool count summary
 
-~13 PDF · ~7 Image · ~10 Audio/Video · ~6 Writing · ~7 Business · ~5 Dev/Web · ~40 client-side · 7 Vault.
+~13 PDF · ~7 Image · ~10 Audio/Video · ~6 Writing · ~7 Business · ~5 Dev/Web · ~44 client-side · 7 Vault.
 
 ## 7. System architecture
 
@@ -315,7 +356,7 @@ Run 100% in the browser; each gets its own SEO landing page. Build these early �
    Redis, Postgres, MinIO listen ONLY on private interfaces.
 
    External services: Stripe, transactional email (Resend default), Cloudflare
-   Turnstile, Google/GitHub OAuth, Sentry, Google Safe Browsing, MaxMind GeoLite2.
+   Turnstile, Google/GitHub OAuth, Sentry, Google Web Risk, trusted edge country metadata.
 ```
 
 Key principles:
@@ -355,7 +396,7 @@ RenderCart/
 │   │   ├── billing/             ← Stripe checkout, webhooks, entitlements, credits ledger
 │   │   ├── jobs/                ← celery app, base task, job service, progress, retention
 │   │   ├── ai/                  ← AI gateway, providers (vllm, openrouter, local-gpu), cost tracking
-│   │   ├── safety/              ← safe URL fetcher (SSRF), file validation, Turnstile, Safe Browsing
+│   │   ├── safety/              ← safe URL fetcher (SSRF), file validation, Turnstile, Web Risk
 │   │   ├── registry/            ← ToolManifest models, discovery, validation
 │   │   ├── tools/
 │   │   │   ├── pdf/merge/       ← manifest.py, options.py, run.py, tests/
@@ -412,12 +453,15 @@ TOOL = ToolManifest(
         max_total_mb={Level.GUEST: 10, Level.FREE: 10, Level.PRO: 500},
     ),
     options=MergeOptions,                 # Pydantic model → JSON Schema → auto-generated form
+    prepare=None,                         # Optional: extract/normalize a source before charging or running
     limits={
         Level.GUEST: Limit.per_day(2),
         Level.FREE: Limit.per_day(3),
         Level.PRO: Limit.unlimited(fair_use_per_hour=120),
     },
-    credit_cost=0,                        # int, or callable(job_inputs) -> int for metered tools
+    credit_cost=0,                        # flat credit cost
+    credit_cost_per_10_pages=0,            # dynamic cost, reserved after worker validates page count
+    credit_cost_per_10000_words=0,         # dynamic cost after the worker extracts/counts source words
     job_tier=JobTier.S,                   # single-job unlock price
     preview_then_pay=False,               # True → free tier gets preview; full result unlocked by payment
     timeout_s=300,
@@ -447,6 +491,8 @@ def run(ctx: JobContext, options: MergeOptions) -> None:
 
 - Slugs unique and kebab-case; `restricted=True ⇒ min_level == SUPER_ADMIN and hidden == True`.
 - `runtime == GPU ⇒ queue in GPU queues`; `credit_cost` defined for every GPU/LLM tool.
+- Dynamic metering such as OCR sets `credit_cost_per_10_pages`; the worker validates actual pages, reserves that exact amount before processing, spends on success, and releases on failure. Other declared units include bytes, minutes, 10-minute bands, characters, and 10,000-word bands. Optional `prepare` hooks extract/normalize user content and return prepared paths plus usage measurements before those dynamic holds are reserved.
+- `word_count_per_day` limits are reserved atomically in Redis after a worker extracts and counts text. Failed jobs release their reservation; successful jobs consume the words until the UTC-day key expires. The same extracted count drives `credit_cost_per_1000_words` billing for paid use.
 - Every non-client tool has a `run` callable and at least one test with a fixture input.
 - Effective limits = manifest defaults **overridden by** `tool_overrides` rows (admin-editable), so pricing/limits change without deploys. Admins can also **disable** a tool instantly.
 
@@ -510,7 +556,7 @@ The owner has **their own GPU server(s)**. Exact GPU models/VRAM/count and netwo
 
 On each GPU server run (`infra/gpu/compose.gpu.yml`):
 - **Celery GPU workers** for non-LLM models (image, audio, embeddings), loading models lazily and keeping hot models resident in VRAM with an LRU policy; one worker process per GPU (`CUDA_VISIBLE_DEVICES`).
-- **vLLM** serving an open-weight chat model (choose a commercially licensed one, e.g. a Qwen or Llama family model sized to VRAM — verify license) and an embeddings model, via its **OpenAI-compatible HTTP API**.
+- **vLLM** serving an open-weight chat model (choose a commercially licensed one, e.g. a Qwen or Llama family model sized to VRAM — verify license) on the chat endpoint and a separate BGE-M3 pooling server on the embedding endpoint, both via the **OpenAI-compatible HTTP API**. The services may use separate GPU hosts when one host cannot fit both models in VRAM.
 - Exporters: node-exporter + NVIDIA DCGM exporter for Prometheus.
 
 ### 11.2 Gateway (`backend/src/rendercart/ai/`)
@@ -522,7 +568,7 @@ ai.chat(messages, task="summarize", max_tokens=..., json_schema=None, priority=.
 ai.embed(texts, task="pdf-chat")
 ```
 
-- **Routing for LLM tasks:** primary = own vLLM; on timeout, 5xx, connection error, or when own-infra queue/latency exceeds a threshold → **OpenRouter** (OpenAI-compatible API, so both use the same client). Per-task model mapping lives in config (`ai_models.yaml` or DB), e.g. `summarize: {primary: "vllm/<model>", fallback: "openrouter/<model>"}`.
+- **Routing for LLM tasks:** primary = own chat vLLM; on timeout, 5xx, connection error, or when own-infra queue/latency exceeds a threshold → **OpenRouter** (OpenAI-compatible API). Embeddings use their own configurable `AI_LOCAL_EMBEDDING_BASE_URL` and never fall back to OpenRouter. Per-task model mapping lives in config (`ai_models.yaml` or DB), e.g. `summarize: {primary: "vllm/<model>", fallback: "openrouter/<model>"}`.
 - **Health:** background health checks mark providers up/down; circuit breaker opens after N consecutive failures.
 - **Privacy:** when falling back to OpenRouter, request providers with zero-data-retention / no-training policies where available. Disclose third-party AI processing in the privacy policy.
 - **Non-LLM GPU tasks have no external fallback** (OpenRouter can't remove backgrounds, upscale, or transcribe). Overload is handled by queueing + priority + "high demand" messaging. Future option: a Replicate/fal.ai fallback provider behind the same interface — **not in scope** unless the owner asks.
@@ -620,25 +666,25 @@ Verify signature; store `event.id` in `stripe_events` (skip duplicates); process
   - `/login`, `/signup`, `/auth/callback/*`, `/auth/magic`, `/auth/reset`
   - `/account` (profile, security/2FA, sessions), `/account/billing`, `/account/history`, `/account/api-keys`, `/account/credits`
   - `/admin/*` (admin+), `/vault/*` (super_admin; 404 otherwise, determined server-side before rendering)
-  - `/developers` (public API docs, Phase 8), `/legal/terms`, `/legal/privacy`, `/legal/dmca`, `/legal/acceptable-use`
+  - `/developers` (public API docs, Phase 8), `/legal/terms`, `/legal/privacy`, `/legal/dmca`, `/legal/acceptable-use`, `/legal/refunds`
   - `/q/[code]` is handled by the **API** (fast redirect), not Next.js.
 - **Generic tool runner** (`components/tool-runner`): dropzone uploader (multi-file, presigned multipart, progress, client-side type/size checks) → options form from JSON Schema → submit → SSE progress → result preview (PDF/image/audio/video/text viewers) → download / download ZIP → paywall modal on 402.
 - **Custom tool UIs** (manifest `ui="custom"`): PDF editor & e-sign (pdf.js + pdf-lib), page organizer, video trimmer, invoice builder, resume builder, QR designer, uptime dashboard, chat-with-PDF chat UI, watermark mask brush (Vault).
 - **SEO (critical for freemium traffic):** each tool page statically generated with title/description/H1, "how to" steps, FAQ, related tools, JSON-LD (`SoftwareApplication`, `HowTo`, `FAQPage`), canonical URLs, Open Graph images; `sitemap.xml` and `robots.txt` built from **public** manifests only; Core Web Vitals budget (LCP < 2.5 s). Tool content copy can be drafted with AI but must be reviewed for accuracy.
 - **Design:** clean, fast, mobile-first, light/dark themes, accessible (WCAG 2.1 AA), no dark patterns in the paywall. Owner has not supplied branding yet (Q8) — use neutral design tokens that are easy to re-theme.
-- **Analytics:** privacy-friendly, cookieless (self-hosted **Umami** or Plausible) so no cookie banner is required; track tool views, job submits, paywall shown/clicked, conversions. Never track Vault usage.
+- **Analytics:** self-hosted Umami 3.4.0 is wired through a separate `UMAMI_BASE_URL` (a `stats.` subdomain in production), with a separate Postgres database and an optional website ID. Tracking is disabled until an ID is configured, excludes URL query strings, respects Do Not Track, and records public page views, tool submission attempts, paywall display/clicks, and a generic Stripe checkout-return event. Account/admin/job/auth routes and Vault/share routes are excluded from pageviews and ordinary custom events. Umami's script is loaded only on trackable routes except the billing success return; never track Vault usage. Setup and privacy rules are documented in [analytics runbook](runbooks/analytics.md).
 - **Ads:** none at launch (Q6).
 
 ## 16. Security, abuse prevention & legal
 
 - **Input files:** size limits per level enforced at presign *and* in worker; magic-byte type detection; reject archives with excessive ratio/entries (zip-bomb guard); image decompression-bomb limits (Pillow `MAX_IMAGE_PIXELS`); PDF page caps per level.
-- **Sandboxing converters:** LibreOffice, ffmpeg, Ghostscript-like tools, Chromium/Lighthouse run in the `cpu.sandbox`/`cpu.heavy` worker images as non-root, read-only root FS, `no-new-privileges`, dropped capabilities, seccomp default, CPU/memory/pids limits, per-job timeouts, temp dirs wiped after each job. Subprocesses get no network where feasible.
+- **Sandboxing converters:** LibreOffice, ffmpeg, Ghostscript-like tools, Chromium/Lighthouse run in the `cpu.sandbox`/`cpu.heavy` worker images as non-root, read-only root FS, `no-new-privileges`, dropped capabilities, seccomp default, CPU/memory/pids limits, per-job timeouts, temp dirs wiped after each job. `worker-sandbox` has an internal-only Docker network with Postgres, Redis, and MinIO, preventing public internet egress while preserving job-service access.
 - **SSRF-safe fetcher** (`rendercart.safety.fetch`) for every server-side URL fetch (summarize URL, uptime, SSL, SEO audit, QR target validation, Vault downloaders): http/https only, resolve DNS and block private/loopback/link-local/CGNAT/multicast/metadata ranges (IPv4 + IPv6), pin the resolved IP for the connection, re-check on every redirect (max 5), response size + time caps. Start from `git show 4f1229f:image-service/url_safety.py` and its tests.
-- **Abuse:** Cloudflare Turnstile for guest job submission and signup; per-IP and per-user rate limits (Redis); concurrency caps; ban/disable controls in admin; abuse report form; Google Safe Browsing / URLhaus checks for dynamic QR targets with periodic re-checks.
+- **Abuse:** Cloudflare Turnstile for guest job submission and signup; per-IP and per-user rate limits (Redis); concurrency caps; ban/disable controls in admin; abuse report form; commercial Web Risk checks for dynamic QR targets on creation and scan.
 - **Web security:** strict CSP (nonce-based), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`; downloads served with `Content-Disposition: attachment` from presigned URLs; never render user-uploaded HTML/SVG inline on the main origin.
 - **Secrets:** `.env` files never committed; `.env.example` documents every variable; production secrets on the server with restricted permissions (later: sops/age or a secrets manager). Encrypt TOTP secrets at rest (app-level key).
 - **Dependencies:** Renovate/Dependabot, `pip-audit`/`uv` audit and `pnpm audit` in CI, container image scanning (Trivy).
-- **Privacy & legal pages:** Terms of Service, Privacy Policy (file retention, auto-deletion, third-party AI processing via OpenRouter, Stripe, analytics), Acceptable Use Policy, DMCA/takedown process, refund policy. Owner must supply the legal entity name and jurisdiction (Q4). Pages are templates until a lawyer reviews them.
+- **Privacy & legal pages:** Terms of Service, Privacy Policy (file retention, auto-deletion, third-party AI processing via OpenRouter, Stripe, analytics), Acceptable Use Policy, DMCA/takedown process, refund policy. Draft template pages now exist and are linked from the site footer and sitemap. Owner must supply the legal entity name, contact details, and jurisdiction (Q4), confirm actual provider/retention details, and obtain legal review before production.
 - **Vault isolation:** see [§5.3](#53-the-vault-restricted-tools). Vault never appears in public artifacts (sitemap, OpenAPI, bundles, analytics).
 - **Licenses:** maintain `docs/licenses.md`; CI check (e.g. `pip-licenses`, `license-checker`) that fails on AGPL/GPL/non-commercial in public code paths unless allow-listed with an ADR.
 
@@ -721,29 +767,39 @@ Phases are sequential through Phase 2 (they build the platform). **After Phase 2
 - **Done when:** jobs route to the GPU server, survive a GPU worker restart (task retry), LLM calls fall back to OpenRouter when vLLM is stopped, and the admin dashboard shows GPU/fallback metrics.
 
 ### Phase 5 — Audio & Video Studio ([§6.3](#63-category-c--audio--video-studio-user-uploaded-files-only--no-platform-downloading))
-- Transcription (+diarization), subtitles (+translation), stems, TTS, denoise, video/audio converters, compressor, trimmer UI.
+- Transcription (+diarization), subtitles (+translation and burn-in), vocal stem splitting, TTS, noise reduction, video/audio converters, compressor, and trimmer UI. Vocal stem splitting remains pending because pretrained checkpoint commercial rights are unclear (see [ADR 0004](adr/0004-audio-denoising-without-model-weights.md)). Subtitle file generation and video burn-in are implemented in `subtitle-generator`; the public `audio-noise-reduction` tool uses FFmpeg `afftdn` in the CPU sandbox, accepts a strength and MP3/WAV format, enforces one guest/free job per day, and reserves two credits per started ten-minute band for Pro/day-pass jobs; Pro-only `subtitle-translation` accepts SRT/VTT files, translates in bounded AI-gateway batches, validates structured responses, preserves cue timings, and costs one credit per started subtitle minute; optional speaker diarization is implemented but requires the owner to accept the pinned Hugging Face model conditions and configure `DIARIZATION_HF_TOKEN`;
 - **Done when:** a 60-minute file transcribes with progress updates and correct credit metering; 2 GB upload works for Pro via multipart.
 
 ### Phase 6 — AI Writing ([§6.4](#64-category-d--ai-writing--summaries))
-- Summarizer (text/PDF/URL), chat-with-PDF (pgvector, citations), paraphraser, grammar, document translator, writing helpers.
+- Summarizer is implemented for pasted text, uploaded PDF/TXT, and public HTML URLs through the SSRF-safe fetcher; PDF extraction uses pdfplumber, URL extraction uses Trafilatura 2.3.1 (Apache-2.0), sources are chunked and hierarchically reduced through the AI gateway, guests/free users have daily quotas and a 5,000-word cap, and Pro/day-pass jobs reserve two base credits plus one credit per started 10,000 words; extracted sources are capped at 2M characters.
+- Chat-with-PDF is implemented through the GPU embedding queue and existing job pipeline: PDF pages are extracted into page-numbered overlapping chunks, embedded in batches through the local-first 1024-dimensional BGE-M3 endpoint, stored in Postgres/pgvector with an HNSW cosine index, and retrieved chunks are sent to the LLM with prompt-injection boundaries. Answers persist as chat turns with citations and excerpts, and recent successful turns are included for follow-up context. Guest/free tiers get one active document (100-page indexing limit, one indexing job per day) and ten questions per day; day-pass/Pro indexing holds five credits and each successful paid-tier question spends one credit; failed questions release quota/credit holds. Guests' documents expire after 24 hours, free/day-pass after 30 days, and Pro documents remain until deleted. Owners can delete documents and all associated chunks/history. `pgvector` and BGE-M3 license records and implementation tradeoffs are in [ADR 0005](adr/0005-chat-with-pdf.md).
+- Paraphraser, grammar fixer, and writing-helper tools are implemented as self-contained registry modules using the local-first AI gateway. Paraphraser and grammar accept pasted text or TXT files, enforce a 500-word/day aggregate guest/free quota and 500-word per-job cap, allow 10,000 words per day-pass/Pro job, and reserve one credit per started 1,000 words for paid use. Writing helpers cover email, title, caption, product description, social post, and agenda drafts, allow three guest/free runs per day, and reserve one credit per day-pass/Pro run; an optional TXT file can provide reference text. User-supplied text, prompts, and audience details are encrypted in stored job options. The job runner now filters UI options to arguments accepted by each tool's runner, fixing the existing prepared-source summarizer path too. `Limit.word_count_per_day` uses an atomic Redis word reservation stored on the job and released if processing fails, so failed submissions do not consume a user's daily allowance.
+- Document translation is implemented for DOCX, PDF, PPTX, and TXT through the local-first AI gateway. DOCX paragraph/table/header/footer text and PPTX slide text frames/tables are translated in bounded structured-response batches; PDF text is translated page-by-page and rebuilt at the original page dimensions; TXT paragraph breaks are retained. Free jobs are capped at one page/slide (500-word estimate for DOCX/TXT); day-pass/Pro jobs allow up to 2,000 pages and charge two credits per page; single-job unlock uses the Large tier. `python-docx` and `python-pptx` MIT license records are in [licenses.md](licenses.md). PDF rebuild currently does not preserve source images, typography, or exact layout; runtime/provider verification and visual fidelity work remain.
+- Phase 7 groundwork: static QR is generated in-browser; the Code 128 barcode and HTML email signature tools are now client-side and browser-only. Invoice/quote/receipt PDF generation uses the queued job pipeline and supports line items, tax, due dates, and nine currencies; invoice options are encrypted, free output has the RenderCart footer, and Pro/day-pass output is unbranded. Owner-scoped saved client and catalog item APIs now support list/create/update/delete; serialized records are encrypted at rest and audited, and the invoice form loads, reuses, and saves them for signed-in users. Sequential invoice/quote/receipt numbers are reserved atomically per account and document type. Pro users can create, list, pause/resume, and delete weekly or monthly invoice schedules; Celery beat checks due schedules each minute, creates normal invoice jobs with a fresh issue/due date and sequence number through the job outbox, and pauses schedules when Pro access ends. Monthly schedules retain their original day-of-month anchor. Dynamic QR codes have account-owned create/edit/delete, one free code, persistent redirect tokens, Web Risk checks, a scan interstitial with a report form, admin disable/report endpoints, and timestamp/country/device scan records. Commercial use requires Web Risk rather than the non-commercial Safe Browsing API; configure `GOOGLE_WEB_RISK_API_KEY` before enabling dynamic QR creation. Country analytics defaults to `ZZ` until a trusted edge country header is enabled. The business-card generator now creates a queued 3.5 × 2-inch PDF with 0.125-inch bleed, crop marks, editable contact fields and accent color, a live browser preview, and a free-tier footer. PDF colors are RGB; print shops may need to convert the file to CMYK.
+- Resume/CV generation now accepts structured contact details, summary, experience, education, skills, and optional cover-letter text and creates a paginated PDF in classic, modern, or compact layouts. Modern and compact layouts are server-gated to day-pass/Pro access; optional AI rewriting is Pro-only, costs two credits, records gateway usage, and is instructed to preserve supplied facts; the details are encrypted in job options and free classic output is branded. Multiple saved resumes remain planned.
+- Runtime verification against the local GPU/LLM server, 200-page Chat-with-PDF citation-quality acceptance, PDF translation visual fidelity, and browser workflow review remain outstanding; static checks are to be rerun after this implementation.
 - **Done when:** chat-with-PDF answers cite correct pages on a 200-page test doc; URL summarizer rejects internal-network URLs.
 
 ### Phase 7 — Business Generators ([§6.5](#65-category-e--business-generators))
 - Invoice builder (saved clients, recurring), resume builder (+AI rewrite), dynamic QR with analytics + abuse gating, barcode, email signature, business cards.
+- Implemented so far: client-side static QR/barcode/email signature, queued invoice/quote/receipt PDF, encrypted owner-scoped saved client/item APIs integrated into the invoice form, atomic sequential invoice/quote/receipt numbering, Pro weekly/monthly recurring invoice schedules dispatched through the job outbox, dynamic QR management with URL safety and abuse reporting, queued business-card PDFs with bleed/trim marks, and a structured resume/CV PDF builder with classic, modern, and compact layouts plus a Pro-only AI rewrite charged at two credits. Remaining: multiple saved resumes and production setup for Web Risk/country analytics.
 - **Done when:** a dynamic QR's target can be edited without changing the printed code, scans are recorded with country/device, and a Safe-Browsing-flagged target is rejected.
 
 ### Phase 8 — Developer & Website Tools + Public API ([§6.6](#66-category-f--developer--website-tools))
 - Uptime monitors, SSL/domain alerts, SEO/speed audit, webhook tester, API keys, public `/v1` API for public tools with credit billing and rate limits, `/developers` docs (public OpenAPI excluding admin/Vault).
+- Implemented so far: Pro-gated API keys are random, stored only as SHA-256 hashes, displayed once, revocable, and managed from `/account`; `/v1` lists enabled public tools, exposes signed-upload presigning, creates jobs through the website job validation/billing path, and returns job status/download links. Requests are capped at 120/minute/key. `/v1/openapi.json` is generated from only the public API router, excluding admin and restricted routes. Uptime monitor CRUD and account UI support one free site checked every 15 minutes or up to 20 Pro/day-pass sites checked every minute; checks use DNS-pinned SSRF-safe fetches, store response history, and email alert on the second consecutive failed check and on recovery. Pro/day-pass Discord and Slack webhooks are encrypted at rest and POSTed only to exact approved provider hosts without following redirects. SSL/domain alerts provide one free domain or unlimited Pro/day-pass domains, perform daily pinned TLS and RDAP checks, and email once per expiry date within 30 days; account UI displays certificate/registration dates and check errors. The webhook tester provides one-hour free or seven-day paid bins with one-time hashed tokens, encrypted request captures, capped request size/rate/history, and account UI. Pro website-audit schedules now support up to five verified-email schedules, weekly credit-reserved Lighthouse job creation, entitlement pause, and owner schedule management. Remaining: live Lighthouse/scheduler/email/webhook/SMS/RDAP runtime verification.
 - **Done when:** a monitor alerts via email + Discord within 2 checks of an outage; an API key can run `merge-pdf` and is billed correctly; Vault endpoints are absent from the public OpenAPI.
 
 ### Phase 9 — Vault & Admin dashboard ([§5.3](#53-the-vault-restricted-tools))
 - Admin dashboard: users (search, plan, credits, ban, role for super_admin), jobs/queues, revenue, AI/GPU, tool flags & limits editor (`tool_overrides`), abuse reports, audit log.
 - Vault tools: social downloaders (yt-dlp), watermark remover (LaMa), PDF unlocker, URL shortener, pastebin, temp file share, face tools.
 - **Vault invariant test suite:** 404 for every level below super_admin on every Vault route; absent from `/api/tools`, sitemap, search, public OpenAPI, analytics, and the non-vault JS bundles; audit log written for every action; TOTP required.
+- Implemented so far: `/admin` dashboard and `/api/admin` endpoints require an admin-or-higher session with verified TOTP and return 404 otherwise. Dashboard data includes user/job counts, queued/running jobs, gross paid-purchase totals, and current-month estimated AI spend. Staff can search users, ban/unban accounts, grant audited credits, view recent jobs/audit events, and edit public tool enabled flags, limits, and prices; only super_admin can change user roles, and the web UI cannot assign or remove super_admin. Dynamic QR abuse reports now have open/resolved state, audited resolve/reopen actions, and an admin dashboard queue with a code-disable action. Restricted manifests are omitted from admin controls. The Vault has a super-admin/MFA-gated server-rendered page, encrypted expiring short links, text shares, and 25 MB file shares; all are hidden restricted registry modules, use opaque public links, record create/delete audit events, and clean up expired rows and file objects. Seven focused Vault authorization/storage/expiry/isolation tests and six GPU health tests pass. The admin dashboard reports GPU worker presence and queue backlog, with optional private DCGM hardware readings. Other restricted processors and full app-level route/search/sitemap/analytics isolation verification remain; the build now enforces the Vault client bundle boundary across all route manifests.
 - **Done when:** all invariant tests pass and the owner has verified access personally.
 
 ### Phase 10 — Launch polish
 - All client-side tools from [§6.7](#67-free-client-side-tools-traffic-magnets-zero-server-cost); SEO content for every public tool; legal pages; analytics (Umami); Lighthouse ≥ 90 on tool pages; load test (k6 or Locust) of job pipeline; backups + restore test; production deploy runbook; monitoring alerts live; Stripe live mode switch checklist.
+- Implemented so far: the client-side tool catalog has 44 pages covering text, developer, calculator, QR, barcode, email-signature, password, and seven browser-based image utilities. JSON ↔ YAML uses the ISC-licensed browser parser with alias expansion and 1 MB input limits; MD5 has standard UTF-8 vectors and is labelled for legacy checksums only. The currency converter loads server-fetched ECB reference rates from a Redis cache refreshed daily by Celery Beat, uses a seven-day last-good fallback, and supports any available source/target pair through EUR. Editorial SEO content, legal/analytics polish, remaining image/generator coverage, performance/load acceptance, restore verification, and production deployment remain.
 - **Done when:** production is live on the owner's domain, a real $9.99 subscription works end to end, and the owner signs off.
 
 ## 19. How to work in this repo (rules for agents)
@@ -766,17 +822,17 @@ Phases are sequential through Phase 2 (they build the platform). **After Phase 2
 
 - [x] Old codebase removed (`527fa5e`)
 - [x] Plan written (this document)
-- [ ] **Phase 0** — Foundation
-- [ ] **Phase 1** — Core platform (auth, RBAC, registry, jobs, credits, 2 reference tools, 5 client tools)
-- [ ] **Phase 2** — Billing (Stripe)
-- [ ] **Phase 3** — PDF Suite
-- [ ] **Phase 4** — AI gateway, GPU workers, AI Image Studio
-- [ ] **Phase 5** — Audio & Video Studio
-- [ ] **Phase 6** — AI Writing
-- [ ] **Phase 7** — Business Generators
-- [ ] **Phase 8** — Developer & Website Tools + Public API
-- [ ] **Phase 9** — Vault & Admin dashboard
-- [ ] **Phase 10** — Launch polish & production
+- [ ] **Phase 0** — Foundation (scaffold and local app checks complete; `.env` numeric settings now parse correctly and the development Compose configuration validates; full Compose runtime check pending because Docker Desktop's backend fails during startup on its inference-manager named-pipe path)
+- [ ] **Phase 1** — Core platform (auth, sessions, CSRF, TOTP, RBAC calculation, tool registry/overrides, merge-PDF/image-converter, signed uploads, guest ownership attachment on signup/sign-in, Turnstile checks, Redis daily/hourly quota reservations, credit holds/ledger, Celery execution, job progress/status/history/downloads, retention cleanup, generic tool/job/category pages, five browser tools, pricing/paywall entry points, CLI role/credit commands, and SSRF-safe URL fetching are implemented in part; robust end-to-end verification, Docker runtime verification, payment-backed paywall flow, and remaining acceptance criteria still need work)
+- [ ] **Phase 2** — Billing (Stripe) (partial: billing tables/migrations, Stripe Checkout/customer portal, signed/idempotent webhook processing, Pro/day-pass/credit-pack fulfillment, monthly grants, cancellation/retry-window entitlement calculation, account billing page, catalog sync CLI, audited CLI Pro comp/refund, guest day-pass claim via magic link, pre-paid single-job checkout with DB outbox dispatch, preview-result checkout/unlock, FIFO credit holds/spend/release, and scheduled credit-lot expiry are implemented; in-app admin controls, real Stripe test-mode verification, and full billing/paywall E2E coverage remain)
+- [ ] **Phase 3** — PDF Suite (partial: generic manifest-driven output handling plus Merge PDF, Split PDF, Extract Pages, Reorder/Delete Pages, Rotate PDF, lossless Compress PDF, password Protect PDF, PDF-to-XLSX table export, PDF-to-image export, searchable OCR, PDF-to-Word text extraction, multi-image-to-PDF, DOCX/XLSX/PPTX-to-PDF conversion, visual E-sign, and browser PDF editing are implemented with schema-driven options and reference-tool coverage; all PDF manifests expose Pro batch mode with ZIP results, per-input static or dynamic credit holds, progress events, and pairwise Merge PDF semantics, except custom Editor and E-sign flows; organizer has browser PDF.js thumbnails and visual page reorder/delete controls feeding the existing worker; E-sign lets a signer draw and position a visual mark on a chosen PDF page, requires explicit consent, embeds the mark in-browser, and persists an audit record with signer name/email, server timestamp, request IP, selected page, and source/signed SHA-256 hashes (this is not identity verification or a certificate-backed digital signature); the editor adds text and images at selected coordinates, fills supported text/checkbox/dropdown/radio form fields, and gives free users a server-watermarked PDF preview with a clean output available through the existing one-time unlock flow; it does not rewrite existing page text; ReportLab's BSD license is recorded in [licenses.md](licenses.md); Word conversion uses the MIT-licensed pdfplumber extractor and a minimal OOXML DOCX writer to avoid AGPL dependencies, retains reading order/page boundaries but does not recreate complex layout/images, and expects OCR first for scanned documents; image-to-PDF supports JPG/PNG uploads, transparent backgrounds, and image/A4/Letter page sizing; Office files are validated as macro-free OOXML with archive-bomb/external-relationship checks and converted in the resource-limited non-root sandbox worker on an internal-only network; the LibreOffice license and package-notice decision is recorded in [ADR 0003](adr/0003-libreoffice-sandbox.md); OCR is routed to a non-root resource-limited sandbox worker, guest/free page limits are enforced server-side, and day-pass/Pro jobs reserve one credit per ten validated pages before processing; deeper golden-file coverage, OCR/LibreOffice container runtime verification, and full browser/SEO acceptance remain)
+- [ ] **Phase 4** — AI gateway, GPU workers, AI Image Studio (partial: configurable vLLM-first chat/embedding gateway, OpenRouter chat-only fallback with circuit breaker and transactionally reserved monthly spend cap, mock mode, usage ledger, GPU Compose worker and deployment runbook, and pinned MIT BiRefNet background remover with enforced low-resolution guest/free previews, separately stored locked full-resolution output, and one-time checkout unlock are implemented; remaining image models/tools, queue-priority overload behavior, health probes/exporters, admin metrics, and GPU restart/failure integration verification remain)
+- [ ] **Phase 5** — Audio & Video Studio (partial: CPU sandbox tools now convert audio among MP3/WAV/FLAC/M4A/OGG, trim audio to MP3, extract audio from video, convert video among MP4/WebM/MOV, compress MP4, trim video, export short GIF clips, and join up to ten clips with normalized video/audio streams; the trimmer has local video preview with start/end range controls; media uploads are checked against container signatures and ffprobe stream type, input duration is capped at three hours, FFmpeg is restricted to local file/data/crypto protocols, and sandbox scratch data uses an isolated named volume; video compression holds one Pro/day-pass credit per 100 MB of input; transcription runs on the GPU audio queue with pinned faster-whisper large-v3 weights and returns TXT/SRT/timestamped JSON in a ZIP, optional language selection, progress events, 3 guest / 10 free minutes per month enforced atomically by actual media duration, and one Pro/day-pass credit per started minute; optional speaker labels use pyannote Community-1 pinned to revision `3533c8cf8e369892e6b79ff1bf80f7b0286a54ee`, are written into transcript segments/SRT/JSON with CC-BY attribution in the ZIP, and require the owner to accept gated-model conditions and configure `DIARIZATION_HF_TOKEN`; text-to-speech now uses pinned Kokoro-82M weights and voice embeddings on the GPU audio queue, with the Apache-2.0 Kokoro 0.9.4 inference modules vendored and modified to use English-only Misaki G2P without the GPL eSpeak fallback; it accepts UTF-8 text files, offers eleven English voices, speed and MP3/WAV options, limits guest/free jobs to 500 characters, gives Pro/day-pass jobs a 100,000-character cap, and charges one credit per 1,000 characters; the new GPU subtitle generator reuses pinned faster-whisper weights to create styled SRT/VTT files or burn captions into video, with guest/free duration quotas and credit metering; the Pro-only subtitle translator accepts SRT/VTT files, calls the local-first/OpenRouter-fallback AI gateway in 20-cue batches, validates structured responses, preserves cue timecodes and converts timestamp separators when changing formats, and charges one credit per started subtitle minute; FFmpeg `afftdn` audio noise reduction runs in the isolated CPU sandbox and charges two credits per started ten-minute band; vocal stem splitting remains pending due to unclear commercial licensing of available pretrained checkpoints; diarization model access/runtime verification, 2 GB end-to-end Pro upload verification, and FFmpeg/GPU worker runtime verification remain)
+- [ ] **Phase 6** — AI Writing (partial: SSRF-safe summarizer, persistent pgvector Chat-with-PDF and cited chat history, paraphraser, grammar fixer, six prompt-based writing-helper templates, and DOCX/PDF/PPTX/TXT document translation are implemented; generic runner option filtering and atomic daily word quotas support these tools; PDF translation currently rebuilds text without original graphics/layout; local AI runtime, 200-page citation-quality, PDF visual fidelity, and browser workflow verification remain)
+- [ ] **Phase 7** — Business Generators (partial: static QR, Code 128 barcode, HTML email signature, queued invoice/quote/receipt PDF generation, encrypted owner-scoped saved client/item CRUD integrated into the invoice form, atomic sequential invoice/quote/receipt numbering, Pro weekly/monthly recurring invoice schedules generated through queued jobs, editable dynamic QR codes with URL safety checks, scan logging, abuse reports and admin disable, print-ready business-card PDFs with bleed/trim marks and a live form preview, and structured resume/CV PDF generation with three layouts, server-side paid-layout gating, and Pro-only fact-preserving AI rewrite billed at two credits are implemented; multiple saved resumes remain; business-card PDF uses RGB and may need printer-side CMYK conversion; Web Risk API key and trusted country-header deployment configuration are external prerequisites)
+  - [ ] **Phase 8** — Developer & Website Tools + Public API (partial: public Pro API keys, filtered tool listing/OpenAPI, signed upload presigning, queued job creation/status, and per-key rate limiting are implemented; account-owned uptime monitors with 15-minute free / 1-minute paid schedules, safe checks, history, pause/resume, email alerts, encrypted Discord/Slack webhooks, opt-in Twilio SMS with monthly cap and credit accounting, and account UI are implemented; daily TLS/RDAP expiry alerts and account management are implemented; short-lived encrypted webhook request bins with one-time tokens, abuse limits, cleanup, and account UI are implemented; Pro weekly Lighthouse schedules now validate public HTTPS targets, reserve two credits, and dispatch through the transactional outbox; Lighthouse/scheduler/email/webhook/SMS/RDAP runtime verification remains)
+- [ ] **Phase 9** — Vault & Admin dashboard (partial: MFA-gated admin overview, user search/ban/credits/role management, job and audit views, public tool override controls, dynamic QR abuse report triage/disable controls, and hidden restricted URL shortener/paste/file-share registry modules with owner-only UI, encrypted storage, expiry cleanup, and seven focused Vault tests are implemented; MFA-gated GPU worker presence and per-queue backlog are visible in the dashboard, with optional privately scraped DCGM hardware readings. Six GPU metrics and access-control test cases cover this telemetry path. Social downloaders, watermark remover, PDF unlocker, face tools, and the explicit route/search/sitemap/analytics isolation acceptance suite remain; the production build gates the Vault client bundle boundary)
+- [ ] **Phase 10** — Launch polish & production (partial: 44 in-browser tools now exist, including text/developer/calculator utilities and seven browser-based image tools; JSON/YAML conversion, MD5 hashing, and the Redis-cached daily ECB currency converter are implemented; self-hosted Umami 3.4.0 is wired through a separate configurable `UMAMI_BASE_URL`, with query-string exclusion, DNT support, limited public events, a generic checkout-return event, and private/Vault route exclusion; the setup and privacy rules are in [analytics runbook](runbooks/analytics.md); draft Terms, Privacy, Acceptable Use, copyright/DMCA, and Refund policy pages are linked from the site footer and sitemap; remaining generators, reviewed SEO/legal content, analytics runtime/dashboard setup, Lighthouse and load acceptance, backup restore verification, production runbook/monitoring, live Stripe flow, and owner sign-off remain)
 
 ## 21. Open questions for the owner
 
@@ -793,9 +849,11 @@ Each has a **default** so work isn't blocked. Record the answer here (and in an 
 | Q7 | Annual Pro plan (e.g. $79/yr)? | Not at launch |
 | Q8 | Branding: logo, colors, fonts, tone | Neutral, easily re-themeable design tokens |
 | Q9 | Allow guests (no account) to use tools? | Yes, with lower limits + Turnstile |
-| Q10 | SMS uptime alerts (Twilio costs money per SMS) | Pro only, 1 credit per SMS, monthly cap |
+| Q10 | SMS uptime alerts (Twilio costs money per SMS) | Pro only, explicit consent, 1 credit per accepted SMS, 20 per account/month by default (configurable) |
 | Q11 | Final free limits, credit costs, single-job tiers | Use the numbers in [§4](#4-business-model-pricing-credits-limits) and [§6](#6-tool-catalog); all editable in admin |
 | Q12 | Which branch should PRs target, `main` or `develop`? | Ask before opening the first PR |
+| Q13 | Accept pyannote Community-1 Hugging Face model conditions and configure a read token? | Diarization stays disabled until the owner accepts the model page conditions and sets `DIARIZATION_HF_TOKEN` |
+| Q14 | Configure a commercial Google Web Risk API key for dynamic QR target checks? | Dynamic QR code creation is disabled with HTTP 503 until `GOOGLE_WEB_RISK_API_KEY` is configured; Safe Browsing v4 is non-commercial-only |
 
 ## 22. Glossary
 

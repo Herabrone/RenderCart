@@ -1,0 +1,44 @@
+{
+  "name": "@rendercart/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 0.0.0.0",
+    "build": "next build && node scripts/check-vault-build.mjs",
+    "start": "next start --hostname 0.0.0.0",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "gen:api": "openapi --input http://localhost/api/openapi.json --output src/lib/api/generated"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jsbarcode": "^3.12.3",
+    "lucide-react": "^0.468.0",
+    "next": "^15.1.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.4.299",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "^4.1.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.64.0",
+    "@types/jsbarcode": "^3.11.4",
+    "@types/node": "^22.10.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.1.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

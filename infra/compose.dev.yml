@@ -1,0 +1,39 @@
+services:
+  caddy:
+    ports: ["80:80", "443:443"]
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      target: builder
+    command: ["pnpm", "--filter", "@rendercart/web", "dev"]
+    volumes:
+      - ../apps/web:/app/apps/web
+      - /app/node_modules
+      - /app/apps/web/node_modules
+    environment:
+      NODE_ENV: development
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: ["uvicorn", "rendercart.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes: [../backend/src:/app/src, ../backend/migrations:/app/migrations]
+  worker-cpu:
+    volumes: [../backend/src:/app/src]
+  scheduler:
+    volumes: [../backend/src:/app/src]
+  postgres:
+    ports: ["127.0.0.1:5432:5432"]
+  redis:
+    ports: ["127.0.0.1:6379:6379"]
+  minio:
+    ports: ["127.0.0.1:9001:9001"]
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["127.0.0.1:8025:8025"]
+  stripe-cli:
+    image: stripe/stripe-cli:latest
+    profiles: [stripe]
+    command: ["listen", "--api-key", "${STRIPE_SECRET_KEY:-}", "--forward-to", "http://api:8000/api/billing/webhook"]
+    depends_on: [api]
