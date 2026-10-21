@@ -1,4 +1,13 @@
 {$S3_PROXY_SITE} {
+  header {
+    Access-Control-Allow-Origin "*"
+    Access-Control-Allow-Methods "GET, HEAD, PUT, POST, DELETE, OPTIONS"
+    Access-Control-Allow-Headers "*"
+    Access-Control-Expose-Headers "ETag"
+    Vary Origin
+  }
+  @storage_preflight method OPTIONS
+  respond @storage_preflight "" 204
   reverse_proxy minio:9000
 }
 
