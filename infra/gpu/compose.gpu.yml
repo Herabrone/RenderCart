@@ -1,0 +1,94 @@
+name: rendercart-gpu
+services:
+  worker-gpu:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile.gpu
+    command:
+      - celery
+      - -A
+      - rendercart.jobs.celery_app
+      - worker
+      - -Q
+      - gpu.image,gpu.image.priority,gpu.audio,gpu.audio.priority,gpu.embed
+      - --concurrency=1
+      - --prefetch-multiplier=1
+      - --loglevel=INFO
+    env_file: .env.gpu
+    network_mode: host
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - model_cache:/root/.cache/huggingface
+  vllm:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.30.0-ubuntu2404}
+    command:
+      - ${VLLM_MODEL:?Set a model ID whose weights are licensed for commercial use}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --api-key
+      - ${VLLM_API_KEY:?Set a long random API key}
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      VLLM_CACHE_ROOT: /root/.cache/vllm
+      HF_TOKEN: ${HF_TOKEN:-}
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - model_cache:/root/.cache/huggingface
+      - vllm_cache:/root/.cache/vllm
+  vllm-embed:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.30.0-ubuntu2404}
+    command:
+      - ${VLLM_EMBEDDING_MODEL:-BAAI/bge-m3}
+      - --runner
+      - pooling
+      - --hf-overrides
+      - '{"architectures":["BgeM3EmbeddingModel"]}'
+      - --pooler-config.task
+      - embed
+      - --max-model-len
+      - "8192"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - --api-key
+      - ${VLLM_API_KEY:?Set a long random API key}
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      VLLM_CACHE_ROOT: /root/.cache/vllm
+      HF_TOKEN: ${HF_TOKEN:-}
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - model_cache:/root/.cache/huggingface
+      - vllm_cache:/root/.cache/vllm
+
+volumes:
+  model_cache:
+  vllm_cache:

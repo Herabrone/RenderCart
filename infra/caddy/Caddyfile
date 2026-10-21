@@ -1,0 +1,70 @@
+{$S3_PROXY_SITE} {
+  reverse_proxy minio:9000
+}
+
+{$UMAMI_CADDY_SITE} {
+  encode zstd gzip
+  reverse_proxy umami:3000
+}
+
+{$CADDY_SITE_ADDRESS} {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    X-Frame-Options DENY
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  }
+
+  handle /api/vault/files {
+    request_body {
+      max_size 26MB
+    }
+    header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    reverse_proxy api:8000
+  }
+
+  handle /api/* {
+    header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    reverse_proxy api:8000
+  }
+
+  handle /v1/* {
+    header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    reverse_proxy api:8000
+  }
+
+  handle /q/* {
+    reverse_proxy api:8000
+  }
+
+  handle /v/* {
+    header X-Robots-Tag "noindex, nofollow"
+    reverse_proxy api:8000
+  }
+
+  handle /p/* {
+    header X-Robots-Tag "noindex, nofollow"
+    reverse_proxy api:8000
+  }
+
+  handle /f/* {
+    header X-Robots-Tag "noindex, nofollow"
+    reverse_proxy api:8000
+  }
+
+  handle /hooks/* {
+    header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    reverse_proxy api:8000
+  }
+
+  handle /vault* {
+    header X-Robots-Tag "noindex, nofollow"
+    reverse_proxy web:3000
+  }
+
+  handle {
+    reverse_proxy web:3000
+  }
+}

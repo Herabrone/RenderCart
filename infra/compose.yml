@@ -1,0 +1,181 @@
+name: rendercart
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
+      S3_PROXY_SITE: ${S3_PROXY_SITE:-http://storage.localhost}
+      UMAMI_CADDY_SITE: ${UMAMI_CADDY_SITE:-http://stats.localhost}
+      UMAMI_BASE_URL: ${UMAMI_BASE_URL:-http://stats.localhost}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web, api, minio, umami]
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_S3_ORIGIN: ${S3_PUBLIC_ENDPOINT:-http://storage.localhost}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:8000
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost}
+      NEXT_PUBLIC_S3_ORIGIN: ${S3_PUBLIC_ENDPOINT:-http://storage.localhost}
+      UMAMI_WEBSITE_ID: ${UMAMI_WEBSITE_ID:-}
+      UMAMI_BASE_URL: ${UMAMI_BASE_URL:-http://stats.localhost}
+    depends_on: [api]
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rendercart}:${POSTGRES_PASSWORD:-rendercart-local-secret}@postgres:5432/${POSTGRES_DB:-rendercart}
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://storage.localhost}
+      FORWARDED_ALLOW_IPS: "*"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+  worker-cpu:
+    build: { context: ../backend, dockerfile: Dockerfile }
+    command: ["celery", "-A", "rendercart.jobs.celery_app", "worker", "-Q", "cpu.default,cpu.heavy", "--concurrency=2"]
+    env_file: ../.env
+    environment:
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      api: { condition: service_started }
+      redis: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+  worker-sandbox:
+    build: { context: ../backend, dockerfile: Dockerfile.sandbox }
+    command: ["celery", "-A", "rendercart.jobs.celery_app", "worker", "-Q", "cpu.sandbox", "--concurrency=1", "--prefetch-multiplier=1", "--loglevel=INFO"]
+    env_file: ../.env
+    environment:
+      REDIS_URL: redis://redis:6379/1
+      TMPDIR: /var/lib/rendercart/tmp
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+      egress-proxy: { condition: service_started }
+    networks: [sandbox_internal]
+    restart: unless-stopped
+    read_only: true
+    volumes:
+      - sandbox_tmp:/var/lib/rendercart/tmp
+    tmpfs: ["/tmp:size=2g,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2.0
+    mem_limit: 4g
+    pids_limit: 128
+  egress-proxy:
+    build:
+      context: ..
+      dockerfile: infra/egress-proxy/Dockerfile
+    restart: unless-stopped
+    networks:
+      default: {}
+      sandbox_internal:
+        aliases: [egress-proxy]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
+  scheduler:
+    build: { context: ../backend, dockerfile: Dockerfile }
+    command: ["celery", "-A", "rendercart.jobs.celery_app", "beat", "--loglevel=INFO"]
+    env_file: ../.env
+    environment:
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      api: { condition: service_started }
+      redis: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rendercart}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rendercart-local-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-rendercart}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [default, sandbox_internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  umami-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: ${UMAMI_DB_PASSWORD:-dev-only-change-this-umami-db-password}
+      POSTGRES_DB: umami
+    volumes: [umami_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  umami:
+    image: docker.umami.is/umami-software/umami:3.4.0
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:-dev-only-change-this-umami-db-password}@umami-db:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET:-dev-only-change-this-umami-app-secret}
+      DISABLE_TELEMETRY: 1
+    depends_on:
+      umami-db: { condition: service_healthy }
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis_data:/data]
+    networks: [default, sandbox_internal]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 10 }
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-rendercart}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-rendercart-local-secret}
+    volumes: [minio_data:/data]
+    networks: [default, sandbox_internal]
+  minio-init:
+    image: minio/mc:latest
+    depends_on: [minio]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER:-rendercart}" "$${MINIO_ROOT_PASSWORD:-rendercart-local-secret}"; do sleep 2; done; mc mb --ignore-existing local/uploads; mc mb --ignore-existing local/results; mc mb --ignore-existing local/persistent; mc mb --ignore-existing local/vault; mc cors set local/uploads /etc/minio/cors.xml; mc cors set local/results /etc/minio/cors.xml
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-rendercart}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-rendercart-local-secret}
+    volumes: [./minio-cors.xml:/etc/minio/cors.xml:ro]
+volumes:
+  sandbox_tmp:
+  postgres_data:
+  umami_data:
+  redis_data:
+  minio_data:
+  caddy_data:
+  caddy_config:
+networks:
+  default: {}
+  sandbox_internal:
+    internal: true

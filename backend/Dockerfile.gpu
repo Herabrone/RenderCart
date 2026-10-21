@@ -1,0 +1,11 @@
+FROM pytorch/pytorch:2.14.1-cuda12.6-cudnn9-runtime
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml ./
+COPY uv.lock ./
+COPY src ./src
+COPY migrations ./migrations
+COPY alembic.ini ./
+RUN pip install --no-cache-dir uv && uv pip install --system '.[gpu]'
+CMD ["celery", "-A", "rendercart.jobs.celery_app", "worker", "-Q", "gpu.image,gpu.audio,gpu.embed", "--concurrency=1"]

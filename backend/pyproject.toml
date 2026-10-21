@@ -1,0 +1,118 @@
+[project]
+name = "rendercart-backend"
+version = "0.1.0"
+description = "RenderCart API and worker platform"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.14",
+  "argon2-cffi>=23.1",
+  "celery[redis]>=5.4",
+  "cryptography>=44.0",
+  "fastapi>=0.115",
+  "itsdangerous>=2.2",
+  "email-validator>=2.2",
+  "pydantic-settings>=2.7",
+  "psycopg[binary]>=3.2",
+  "Pillow>=11.0",
+  "pypdf>=5.1",
+  "pyotp>=2.9",
+  "sentry-sdk[fastapi]>=2.20",
+  "sqlalchemy>=2.0",
+  "structlog>=24.4",
+  "uvicorn[standard]>=0.34",
+  "authlib>=1.9.1",
+  "httpx2>=2.13.1",
+  "boto3>=1.35",
+  "stripe>=16.0.0",
+  "pdfplumber>=0.11.10",
+  "openpyxl>=3.1.5",
+  "pypdfium2>=5.14.0",
+  "reportlab>=5.0.1",
+  "trafilatura==2.3.1",
+  "pgvector>=0.5.0",
+  "python-docx>=1.2.0",
+  "python-pptx>=1.0.2",
+  "certifi>=2026.10.18",
+]
+
+[project.scripts]
+rendercart = "rendercart.cli:main"
+
+[project.optional-dependencies]
+dev = ["httpx>=0.28", "mypy>=1.14", "pytest>=8.3", "ruff>=0.9"]
+gpu = [
+    "accelerate>=1.15.0",
+    "en-core-web-sm",
+    "faster-whisper>=1.2.1",
+    "misaki>=0.9.4",
+    "num2words>=0.5.14",
+    "pyannote-audio==4.0.7",
+    "soundfile>=0.14.0",
+    "spacy>=3.8,<3.9",
+    "transformers>=5.20.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rendercart"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Preserve upstream formatting in the vendored Kokoro implementation; maintain
+# the focused changes in the NOTICE and run.py integration instead.
+"src/rendercart/tools/media/text_to_speech/_kokoro_vendor/*.py" = ["ALL"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = [
+    "authlib.*",
+    "boto3.*",
+    "botocore.*",
+    "celery.*",
+    "ctranslate2",
+    "faster_whisper",
+    "huggingface_hub",
+    "itsdangerous.*",
+    "loguru",
+    "misaki",
+    "numpy",
+    "pyannote.audio",
+    "reportlab.*",
+    "soundfile",
+    "torch",
+    "transformers",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["rendercart.tools.media.text_to_speech._kokoro_vendor.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["pypdfium2"]
+ignore_missing_imports = true
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+
+[dependency-groups]
+dev = [
+    "types-openpyxl>=3.1.5.20261017",
+]

@@ -1,0 +1,33 @@
+FROM node:22.19-bookworm-slim AS node-runtime
+
+FROM python:3.13-slim
+WORKDIR /app
+COPY --from=node-runtime /usr/local/ /usr/local/
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        tesseract-ocr-deu \
+        tesseract-ocr-fra \
+        tesseract-ocr-spa \
+        libreoffice-writer \
+        libreoffice-calc \
+        libreoffice-impress \
+        ffmpeg \
+        chromium \
+        fonts-dejavu-core \
+        fonts-liberation2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 rendercart \
+    && useradd --uid 10001 --gid rendercart --no-create-home --shell /usr/sbin/nologin rendercart
+RUN npm install --global --omit=dev lighthouse@13.5.0 \
+    && npm cache clean --force
+RUN mkdir -p /var/lib/rendercart/tmp && chown rendercart:rendercart /var/lib/rendercart/tmp && chmod 700 /var/lib/rendercart/tmp
+COPY pyproject.toml ./
+COPY src ./src
+COPY migrations ./migrations
+COPY alembic.ini ./
+RUN pip install --no-cache-dir uv && uv pip install --system .
+ENV HOME=/tmp TMPDIR=/var/lib/rendercart/tmp CHROME_PATH=/usr/bin/chromium OMP_THREAD_LIMIT=1 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+USER 10001:10001
+CMD ["celery", "-A", "rendercart.jobs.celery_app", "worker", "-Q", "cpu.sandbox", "--concurrency=1", "--prefetch-multiplier=1", "--loglevel=INFO"]
